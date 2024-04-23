@@ -601,7 +601,7 @@ class AbinitOutParser(TextParser):
 
         self._quantities.append(
             Quantity(
-                'input_vars',
+                'input_variables',
                 r'\-outvars: echo values of preprocessed input variables \-+([\s\S]+?)\={10}',
                 repeats=False,
                 sub_parser=TextParser(
@@ -1135,20 +1135,25 @@ class AbinitOutParser(TextParser):
                 ]
             }
 
-            key_val = self.get('input_vars', {}).get('key_value', [])
-            for i in range(len(key_val)):
-                key, n_dataset = re.search(r'(\D+)?(\d*)', key_val[i][0]).groups()
+            for key_val in self.get('input_variables', {}).get('key_value', []):
+                key, n_dataset = re.search(r'(\D+)?(\d*)', key_val[0]).groups()
                 self._input_vars.setdefault(key, [None] * self.n_datasets)
 
-                try:
-                    m_quantity = getattr(x_abinit_section_input, f'x_abinit_var_{key}')
-                except Exception:
+                m_quantity = x_abinit_section_input.m_def.all_quantities.get(
+                    f'x_abinit_var_{key}'
+                )
+                if m_quantity is None:
                     continue
 
-                if '-' in key_val[i]:  # exception when the next line starts with -
-                    key_val[i] = key_val[i][:-1]
+                if '-' in key_val:  # exception when the next line starts with -
+                    key_val = key_val[:-1]
 
-                val = np.array(key_val[i][1:], dtype=m_quantity.type)
+                val = np.array(
+                    key_val[1:],
+                    dtype=m_quantity.type.standard_type()
+                    if hasattr(m_quantity.type, 'standard_tpye')
+                    else m_quantity.type,
+                )
                 if not m_quantity.shape:
                     val = val[0]
                 if n_dataset:
@@ -1197,9 +1202,22 @@ class AbinitParser(BeyondDFTWorkflowsParser):
             sec_input = x_abinit_section_input()
             sec_dataset.x_abinit_section_input = sec_input
             for key, val in self.out_parser.input_vars.items():
-                if val[i] is None:
+                quantity_def = sec_input.m_def.all_quantities.get(f'x_abinit_var_{key}')
+                if val[i] is None or quantity_def is None:
                     continue
-                setattr(sec_input, f'x_abinit_var_{key}', val[i])
+                try:
+                    shape = [
+                        self.out_parser.input_vars[s.split('_')[-1]][i]
+                        if isinstance(s, str)
+                        else s
+                        for s in quantity_def.shape
+                    ]
+                    sec_input.m_set(
+                        quantity_def,
+                        np.reshape(val[i], shape) if shape else val[i],
+                    )
+                except Exception:
+                    pass
 
     def parse_system(self):
         sec_run = self.archive.run[-1]
@@ -1404,13 +1422,17 @@ class AbinitParser(BeyondDFTWorkflowsParser):
             .get('values')
         )
         if frequency_values is not None:
-            values = [freq[0] + freq[1] * 1j for freq in frequency_values] * ureg.eV
+            values = [freq[0] + freq[1] * 1j for freq in frequency_values]
+            values = np.reshape(values, (len(values), 1))
             sec_freq_mesh = FrequencyMesh(
-                dimensionality=1, n_points=len(frequency_values), points=values
+                dimensionality=1,
+                n_points=len(frequency_values),
+                points=values * ureg.eV,
             )
         else:
             freq_plasma = self.out_parser.get('gw_dataset', {}).get('omega_plasma', 0.0)
             values = [0.0, freq_plasma * 1j]
+            values = np.reshape(values, (len(values), 1))
             sec_freq_mesh = FrequencyMesh(dimensionality=1, n_points=2, points=values)
         sec_method.m_add_sub_section(Method.frequency_mesh, sec_freq_mesh)
         # Screening
