@@ -2,6 +2,7 @@ import re
 import numpy as np
 import logging
 import ase
+from typing import Optional
 
 from .metainfo import m_env
 
@@ -903,7 +904,7 @@ class GaussianParser:
 
         self._basis_set_pattern = re.compile(
             r'(6\-311G)|(6\-31G)|(LANL2)|(LANL1)|(CBSB7)|(UGBS)|AUG\-(.*)|(D95)'
-        )
+        )  # match additional specifications
 
         self._energy_methods = {
             'mp': (
@@ -1306,11 +1307,15 @@ class GaussianParser:
                     name = res[2]
             return prefix, name
 
-        def resolve_basis_set(parameter):
+        def resolve_basis_set(parameter: str) -> Optional[tuple[str, str]]:
+            """This function has 2 responsibilities:
+            1. discern `parameter` from other input settings.
+            2. verify that `parameter` is a valid basis set name."""
             basis_set = self._basis_set_map.get(parameter, None)
             if basis_set is not None:
                 return (parameter, parameter)
 
+            # handle modular extensions
             res = self._basis_set_pattern.match(parameter)
             if res is not None:
                 basis_keys = [key for key in res.groups() if key is not None]
@@ -1319,6 +1324,9 @@ class GaussianParser:
                         'Cannot resolve basis set', data=dict(key=parameter)
                     )
                 return (basis_keys[0], parameter)
+
+            # in case the setting was not recognized
+            return None
 
         def resolve_xc_functional(parameter):
             xc_functional = self._xc_functional_map.get(parameter, None)
@@ -1373,9 +1381,12 @@ class GaussianParser:
                 xc_functionals.add(xc_functional)
 
             basis_set_parameter = parameter[0] if not parameter[1:] else parameter[1]
+            # ! invert logic
             basis_set = resolve_basis_set(basis_set_parameter.strip())
-            if basis_set is not None:
+            if basis_set:
                 basis_sets.add(basis_set)
+        if len(basis_sets) == 0:
+            basis_sets.add(resolve_basis_set('STO-3G'))
 
         sec_dft = DFT()
         sec_method.dft = sec_dft
@@ -1397,19 +1408,13 @@ class GaussianParser:
                 )
 
         # Basis set
-        if len(basis_sets) != 1:
-            self.logger.error(
-                'Found multiple or no basis set', data=dict(n_parsed=len(basis_sets))
-            )
         for basis_set in basis_sets:
             bs = BasisSet(
                 type='gaussians',
                 scope=['full-electron'],
             )
-            for _ in self._basis_set_map.get(basis_set[0], []):
-                # TODO need to adjust basis_set atom centered to take multiple entries
-                # old parser writes the full name of basis set here not the name on map
-                bs.atom_centered.append(BasisSetAtomCentered(name=basis_set[1]))
+            bs.atom_centered.append(BasisSetAtomCentered(name=basis_set[1]))
+            # ? what does it mean to have multiple basis sets
         sec_method.electrons_representation = [
             BasisSetContainer(
                 type='atom-centered orbitals',
