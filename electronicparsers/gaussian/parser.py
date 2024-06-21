@@ -100,6 +100,25 @@ class GaussianOutParser(TextParser):
             fc = fc + fc.T - np.diag(fc.diagonal())
             return fc
 
+        def str_to_units(unit: str) -> ureg.Unit:
+            """Map native Gaussian units to pint units.
+            Assumes lower case string input."""  # TODO handle compound units recursively
+            unit_map: dict[str, ureg.Unit] = {
+                'cm**-1': ureg.cm_1,
+                'ghz': ureg.gigahertz,
+                'kcal/mol': ureg.kilocalorie / ureg.mole,
+                'kj/mol': ureg.kilojoule / ureg.mole,
+                'j': ureg.joule,
+                'amu': ureg.amu,
+                'km/mol': ureg.kilometer / ureg.mole,
+                'mDyne/A': ureg.millidyne / ureg.angstrom,
+            }
+            unit = unit.lower()
+            try:
+                return unit_map[unit]
+            except KeyError:
+                raise ValueError(f'Unknown unit {unit}')
+
         orientation_quantities = [
             Quantity(
                 'standard_orientation',
@@ -391,14 +410,49 @@ class GaussianOutParser(TextParser):
                 unit='debye * angstrom**3',
             ),
             Quantity(
-                'frequencies', r'\n *Frequencies \-\-\s*(.+)', dtype=float, repeats=True
+                'frequency_unit',
+                r'[Hh]armonic frequencies \((\S+)\)',
+                str_operation=str_to_units,
             ),
             Quantity(
-                'reduced_masses',
-                r'\n *Red\. masses \-\-\s*(.+)',
-                str_operation=lambda x: [float(v) for v in x.split()],
-                repeats=True,
+                'reduced_mass_unit',
+                r'reduced masses \((\S+)\)',
+                str_operation=str_to_units,
             ),
+            Quantity(
+                'harmonic_force_constant_unit',
+                r'force constants \((\S+)\)',
+                str_operation=str_to_units,
+            ),
+            Quantity(
+                'ir_intensity_unit',
+                r'IR intensities \((\S+)\)',
+                str_operation=str_to_units,
+            ),
+            Quantity(
+                'frequencies',
+                r'Frequencies\s[\-]{2}\s+(.+)',
+                dtype=np.float64,
+                repeats=True,
+            ),  # note the mandatory space after the '--'. Use nested strategy if space is optional
+            Quantity(
+                'reduced_masses',
+                r'Red\. masses\s[\-]{2}\s+(.+)',
+                dtype=np.float64,
+                repeats=True,
+            ),  # note the mandatory space after the '--'. Use nested strategy if space is optional
+            Quantity(
+                'harmonic_force_constants',
+                r'Frc consts[\s]{2}[\-]{2}\s+(.+)',
+                dtype=np.float64,
+                repeats=True,
+            ),  # note the mandatory space after the '--'. Use nested strategy if space is optional
+            Quantity(
+                'ir_intensities',
+                r'IR Inten[\s]{4}[\-]{2}\s+(.+)',
+                dtype=np.float64,
+                repeats=True,
+            ),  # note the mandatory space after the '--'. Use nested strategy if space is optional
             Quantity(
                 'normal_modes',
                 r'Atom\s*AN.*\s*([\-\d\s\.]+)',
@@ -1106,18 +1160,31 @@ class GaussianParser:
         # vibrational frequencies
         frequencies = section.get('frequencies')
         if frequencies is not None:
-            # frequencies in old parsers are in J, not consistent with metainfo
             sec_frequencies = x_gaussian_section_frequencies()
             sec_run.x_gaussian_section_frequencies.append(sec_frequencies)
-            sec_frequencies.x_gaussian_frequencies = np.hstack(frequencies)
+
+            sec_frequencies.x_gaussian_frequencies = np.hstack(
+                frequencies
+            ) * section.get('frequency_unit', ureg.cm_1)
+
             reduced_masses = section.get('reduced_masses')
             if reduced_masses is not None:
-                reduced_masses = (
-                    np.array(np.hstack(reduced_masses), dtype=np.float64) * ureg.amu
-                )
-                sec_frequencies.x_gaussian_red_masses = reduced_masses.to(
-                    'kg'
-                ).magnitude
+                sec_frequencies.x_gaussian_red_masses = np.hstack(
+                    reduced_masses
+                ) * section.get('reduced_mass_unit', ureg.amu)
+
+            intensities = section.get('ir_intensities')
+            if intensities is not None:
+                sec_frequencies.x_gaussian_ir_intensities = np.hstack(
+                    intensities
+                ) * section.get('intensity_unit', ureg.kilometer / ureg.mole)
+
+            force_constants = section.get('harmonic_force_constants')
+            if force_constants is not None:
+                sec_frequencies.x_gaussian_harmonic_force_constants = np.hstack(
+                    force_constants
+                ) * section.get('force_constant_unit', ureg.mdyne / ureg.angstrom)
+
             normal_modes = section.get('normal_modes')
             if normal_modes is not None:
                 normal_modes = np.hstack(normal_modes)

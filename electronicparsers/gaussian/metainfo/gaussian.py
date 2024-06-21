@@ -603,51 +603,47 @@ class x_gaussian_section_frequencies(MSection):
         validate=False,
     )
 
-    x_gaussian_frequency_values = Quantity(
-        type=str,
-        shape=['number_of_frequency_rows'],
-        description="""
-        values of frequencies, in cm-1
-        """,
-    )
-
     x_gaussian_frequencies = Quantity(
         type=np.float64,
+        unit='1/m',
         shape=['number_of_frequencies'],
         description="""
-        values of frequencies, in cm-1
+        values of frequencies
         """,
-    )
-
-    x_gaussian_reduced_masses = Quantity(
-        type=np.float64,
-        shape=['number_of_reduced_masses_rows'],
-        description="""
-        values of normal mode reduced masses
-        """,
-    )
+    )  # only store the '--' header, not '---'
 
     x_gaussian_red_masses = Quantity(
         type=np.float64,
+        unit='kg',
         shape=['number_of_frequencies'],
         description="""
         values of normal mode reduced masses
         """,
-    )
-
-    x_gaussian_normal_modes = Quantity(
-        type=str,
-        shape=['number_of_normal_modes_rows'],
-        description="""
-        normal mode vectors
-        """,
-    )
+    )  # only store the '--' header, not '---'
 
     x_gaussian_normal_mode_values = Quantity(
         type=np.float64,
         shape=['number_of_frequencies', 'number_of_atoms', 3],
         description="""
         normal mode vectors
+        """,
+    )
+
+    x_gaussian_harmonic_force_constants = Quantity(
+        type=np.float64,
+        unit='newton/meter',
+        shape=['number_of_frequencies'],
+        description="""
+        values of harmonic force constants
+        """,
+    )
+
+    x_gaussian_ir_intensities = Quantity(
+        type=np.float64,
+        unit='meter/mol',
+        shape=['number_of_frequencies'],
+        description="""
+        infra-red intensities, integrated over their path length
         """,
     )
 
