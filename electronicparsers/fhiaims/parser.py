@@ -43,6 +43,7 @@ from runschema.method import (
     KMesh,
     FrequencyMesh,
     BasisSetContainer,
+    Scf,
 )
 from runschema.system import System, Atoms
 from runschema.calculation import (
@@ -2062,6 +2063,11 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
         sec_electronic = Electronic()
         sec_method.electronic = sec_electronic
         sec_electronic.method = 'DFT'
+
+        # Scf threshold energy change
+        sec_scf = Scf()
+        sec_method.scf = sec_scf
+        sec_scf.threshoold_energy_change = self.out_parser.get('scf_threshold_energy_change')
 
         # control parameters from out file
         self.control_parser.mainfile = self.filepath
