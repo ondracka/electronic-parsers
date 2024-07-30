@@ -78,6 +78,7 @@ def test_HfO2(parser):
     assert method.electronic.smearing.width == approx(K_to_J(300))
     assert method.dft.xc_functional.correlation[0].name == 'GGA_C_PBE'
     assert method.dft.xc_functional.exchange[0].name == 'GGA_X_PBE'
+    assert (method.k_mesh.grid == [10, 10, 10]).all()
 
     system = run.system[0]
     assert system.atoms.periodic == [True, True, True]
@@ -130,6 +131,7 @@ def test_AlN(parser):
     assert method.dft.xc_functional.exchange[0].name == 'GGA_X_PBE'
     assert method.scf.n_max_iteration == 100
     assert method.scf.threshold_energy_change.magnitude == approx(Ha_to_J(1e-7))
+    assert (method.k_mesh.grid == [7, 7, 3]).all()
 
     workflow = archive.workflow2
     assert workflow.method.method == 'steepest_descent'
@@ -217,6 +219,7 @@ def test_C2N2(parser):
     assert method.electronic.smearing.width == approx(K_to_J(500))
     assert method.dft.xc_functional.exchange[0].name == 'LDA_X'
     assert method.dft.xc_functional.correlation[0].name == 'LDA_C_PZ'
+    assert (method.k_mesh.grid == [1, 1, 1]).all()
 
     workflow = archive.workflow2
     assert workflow.method.thermodynamic_ensemble == 'NVT'
@@ -283,6 +286,7 @@ def test_CrO2(parser):
     assert method.dft.xc_functional.correlation[0].name == 'LDA_C_PW'
     assert method.scf.n_max_iteration == 40
     assert method.scf.threshold_energy_change.magnitude == approx(Ha_to_J(1e-7))
+    assert (method.k_mesh.grid == [5, 5, 8]).all()
 
     eigenvalues = run.calculation[-1].eigenvalues[0]
     assert eigenvalues.n_kpoints == 100
@@ -315,3 +319,4 @@ def test_graphite(parser):
     assert method.electronic.van_der_waals_method == 'G10'
     assert method.scf.n_max_iteration == 100
     assert method.scf.threshold_energy_change.magnitude == approx(Ha_to_J(1e-8))
+    assert (method.k_mesh.grid == [12, 12, 4]).all()

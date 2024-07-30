@@ -52,6 +52,7 @@ from runschema.method import (
     Scf,
     BasisSetContainer,
     CoreHole,
+    KMesh,
 )
 from nomad.parsing.file_parser import TextParser, Quantity
 from simulationworkflowschema import (
@@ -253,6 +254,11 @@ mainfile_parser = TextParser(
             sub_parser=eigenvalues_parser,
             repeats=False,
         ),
+        Quantity(
+            'k_mesh_grid',
+            r'scf.Kgrid\s+(\d+\s+\d+\s+\d+)',
+            repeats=False,
+        )
     ]
 )
 
@@ -686,8 +692,17 @@ class OpenmxParser:
         else:
             sec_electronic.van_der_waals_method = ''
 
-    def parse_eigenvalues(self):
+    def parse_eigenvalues_and_kmesh(self):
         eigenvalues = BandEnergies()
+
+        sec_k_mesh = KMesh()
+        print(sec_k_mesh)
+        self.archive.run[-1].method[-1].k_mesh = sec_k_mesh
+
+        k_mesh_grid = mainfile_parser.get('k_mesh_grid')
+        if k_mesh_grid is not None:
+            sec_k_mesh.grid = k_mesh_grid
+
         self.archive.run[-1].calculation[-1].eigenvalues.append(eigenvalues)
         values = mainfile_parser.get('eigenvalues')
         if values is not None:
@@ -695,9 +710,21 @@ class OpenmxParser:
             if kpoints is not None:
                 eigenvalues.kpoints = kpoints
                 eigenvalues.n_kpoints = len(kpoints)
+                kpoints_multiplicities = []
+                eigenvalues.kpoints_multuplicities = kpoints_multiplicities
+                for kpoint in kpoints:
+                    if np.allclose(kpoint, [[0.0, 0.0, 0.0]], rtol=0.0):
+                        kpoints_multiplicities.append(1)
+                    else:
+                        kpoints_multiplicities.append(2)
+                print(kpoints_multiplicities)
+                print(kpoints)
+                sec_k_mesh.points = np.array(kpoints).astype(complex)
             else:
                 eigenvalues.kpoints = [[0, 0, 0]]
                 eigenvalues.n_kpoints = 1
+                eigenvalues.kpoints_multiplicities = [1]
+                sec_k_mesh.points = [[0, 0, 0]]
             values = values.get('eigenvalues')
             if values is not None:
                 if self.spinpolarized:
@@ -835,4 +862,4 @@ class OpenmxParser:
         except (IndexError, AttributeError):
             pass
 
-        self.parse_eigenvalues()
+        self.parse_eigenvalues_and_kmesh()
