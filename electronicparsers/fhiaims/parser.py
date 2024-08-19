@@ -179,7 +179,7 @@ class FHIAimsControlParser(TextParser):
                 repeats=False,
             ),
             Quantity(
-                xsection_method.x_fhi_aims_controlIn_sc_accuracy_etot,
+                'In_sc_accuracy_etot',
                 rf'{re_n} *sc_accuracy_etot\s*({re_float})',
                 repeats=False,
                 units='eV',
@@ -2066,18 +2066,6 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
         sec_method.electronic = sec_electronic
         sec_electronic.method = 'DFT'
 
-        # Scf threshold energy change
-        sec_scf = Scf()
-        sec_method.scf = sec_scf
-        scf_threshold_energy_change = self.out_parser.get('xsection_method.x_fhi_aims_controlIn_sc_accuracy_etot')
-
-        sec_scf.threshold_energy_change = scf_threshold_energy_change
-        #self.archive.run[-1].method[-1] = sec_scf
-
-        # Smearing kind & width
-        sec_smearing = Smearing()
-        sec_electronic.smearing = sec_smearing
-
         # control parameters from out file
         self.control_parser.mainfile = self.filepath
         # we use species as marker that control parameters are printed in out file
@@ -2211,15 +2199,19 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
                         'Error setting controlIn metainfo.', data=dict(key=key)
                     )
             elif key == 'occupation_type':
+                sec_smearing = Smearing()
+                sec_electronic.smearing = sec_smearing
                 sec_method.x_fhi_aims_controlIn_occupation_type = val[0]
                 sec_smearing_kind = sec_method.x_fhi_aims_controlIn_occupation_type
                 sec_smearing.kind = sec_smearing_kind
+                print(sec_smearing_kind)
                 if sec_smearing_kind == 'cold':
                     sec_smearing_kind = 'marzari-vanderbilt'
 
                 sec_method.x_fhi_aims_controlIn_occupation_width = val[1]
                 sec_smearing_width = sec_method.x_fhi_aims_controlIn_occupation_width
                 sec_smearing.width = sec_smearing_width
+                print(sec_smearing_width)
                 if len(val) > 2:
                     sec_method.x_fhi_aims_controlIn_occupation_order = int(val[2])
             elif key == 'relativistic':
