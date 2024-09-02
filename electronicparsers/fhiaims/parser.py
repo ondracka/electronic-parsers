@@ -1060,6 +1060,7 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
         self.control_parser = FHIAimsControlParser()
         self.dos_parser = DataTextParser()
         self.bandstructure_parser = DataTextParser()
+        self.logger = get_logger(__name__)
         self._calculation_type = 'dft'
         self._child_archives = {}
 
@@ -1282,6 +1283,7 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
             with open(_native_tier_reference_data_filepath) as f:
                 self._native_tier_references = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
+            self._native_tier_references = {}
             self.logger.warning(
                 """Native tier references could not be loaded,
                 hence `native_tier` cannot be assigned."""
@@ -2504,7 +2506,7 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
         self.filepath = filepath
         self.archive = archive
         self.maindir = os.path.dirname(self.filepath)
-        self.logger = logger if logger is not None else get_logger(__name__)
+        self.logger = logger if logger is not None else self.logger
 
         self.init_parser()
 
