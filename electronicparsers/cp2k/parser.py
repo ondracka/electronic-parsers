@@ -967,7 +967,7 @@ class CP2KParser:
             'started_at': 'start_time',
             'started_on': 'start_host',
             'started_by': 'start_user',
-            'process_id': 'id',
+            'process_id': 'process_id',
             'started_in': 'start_path',
             'ended_at': 'end_time',
             'ran_on': 'end_host',
@@ -1481,9 +1481,17 @@ class CP2KParser:
             sec_run.x_cp2k_section_end_information.append(sec_endinformation)
             section = sec_startinformation
             for key, val in program_settings.items():
-                if key == 'id' and isinstance(val, list):
-                    sec_endinformation.x_cp2k_end_id = val[1]
-                    key, val = 'start_id', val[0]
+                if key == 'process_id':
+                    if isinstance(val, list):
+                        sec_startinformation.x_cp2k_start_id = val[0]
+                        sec_endinformation.x_cp2k_end_id = val[1]
+                    elif isinstance(val, int):
+                        self.logger.warning('Calculation may not have properly terminated: did not encounter end "PROCESS ID".')
+                        sec_startinformation.x_cp2k_start_id = val
+                    else:
+                        self.logger.warning('Encountered "PROCESS ID" of unexpected format.')
+                        pass
+                    continue
                 section = (
                     sec_endinformation
                     if key.startswith('end')
@@ -2001,7 +2009,7 @@ class CP2KParser:
         bs_gauss = BasisSet(
             scope=['kinetic energy', 'electron-core interaction'],
             type='gaussians',
-        )
+        )  # TODO: review partition in new parser
         atoms = (
             self.out_parser.get(self._calculation_type, {})
             .get('atomic_kind_information', {})
@@ -2014,22 +2022,21 @@ class CP2KParser:
                 ac.atom_number = self.get_atomic_number(atom.kind_label)
                 ac.name = basis_set
                 bs_gauss.atom_centered.append(ac)
+
+        basis_sets: list[BasisSet] = []
         if bs_gauss.atom_centered:
-            bs_pw = BasisSet(
-                scope=['Hartree energy', 'electron-electron interaction'],
-                type='plane waves',
-                cutoff=self.settings.get('qs', {}).get('planewave_cutoff', None)
-                * ureg.hartree,
-            )
-            basis_sets = [bs_pw, bs_gauss]
+            basis_sets.append(bs_gauss)
+            pw_scope = ['Hartree energy', 'electron-electron interaction']
         else:
-            bs_pw = BasisSet(
-                scope=['valence'],
-                type='plane waves',
-                cutoff=self.settings.get('qs', {}).get('planewave_cutoff', None)
-                * ureg.hartree,
-            )
-            basis_sets = [bs_pw]
+            pw_scope = ['valence']
+
+        bs_pw = BasisSet(
+            scope=pw_scope,
+            type='plane waves',
+        )
+        if (cutoff := self.settings.get('qs', {}).get('planewave_cutoff')) is not None:
+            bs_pw.cutoff = cutoff * ureg.hartree
+        basis_sets.append(bs_pw)
         return basis_sets
 
     def parse_method_quickstep(self):
