@@ -1,4 +1,4 @@
-[![DOI](https://zenodo.org/badge/461046670.svg)](https://zenodo.org/badge/latestdoi/461046670)
+[![DOI](https://zenodo.org/badge/461046670.svg)](https://doi.org/10.5281/zenodo.13880705)
 
 This is a collection of the NOMAD parsers for the following electronic codes:
 
@@ -123,4 +123,4 @@ pip install -e "electronic-parsers[dev]"
 Running the parser now, will use the parser's Python code from the clone project.
 
 ## How to cite this work
-Ladines, A.N., Chang, T., Daelman, N., Fekete, A., Ghiringhelli, L.M., Himanen, L., Ilyas, A., Nakhaee, Ondračka, P., M. Pizarro, Rudzinski, J.F., & Scheidgen, M Atomistic Parsers [Computer software]. https://zenodo.org/doi/xxx
+Ladines, A.N., Chang, T., Daelman, N., Fekete, A., Ghiringhelli, L.M., Himanen, L., Ilyas, A., Nakhaee, Ondračka, P., M. Pizarro, Rudzinski, J.F., & Scheidgen, M Atomistic Parsers [Computer software]. https://doi.org/10.5281/zenodo.13880705
