@@ -29,6 +29,8 @@ from nomad.parsing.file_parser.file_parser import FileParser
 from nomad.parsing.file_parser import TextParser, Quantity
 from runschema.run import Run, Program, TimeRun
 from runschema.method import (
+    AtomParameters,
+    CoreHole,
     Electronic,
     Method,
     DFT,
@@ -76,7 +78,7 @@ class In1Parser(FileParser):
     def parse(self):
         self._results = {'species': []}
         num_orbitals = 0
-        with self.mainfile_obj as f:
+        with self.open_mainfile_obj() as f:
             for line_id, line in enumerate(f):
                 if line_id == 0:
                     line = line.strip().split()
@@ -203,6 +205,42 @@ class StructParser(TextParser):
                 numbers=numbers,
                 pbc=True,
             )
+
+
+class IncParser(TextParser):
+    def __init__(self):
+        super().__init__()
+
+    def init_quantities(self):
+        self._quantities = [
+            Quantity(
+                'one_atom',
+                r'(.*NUMBER OF ORBITALS.*(?:\n.*\( N,KAPPA,OCCUP\))+)',
+                repeats=True,
+                sub_parser=TextParser(
+                    quantities=[
+                        Quantity(
+                            'occupancies',
+                            r'\d+, ?-?\d+,([0-9.]+)',
+                            repeats=True,
+                            dtype=float,
+                        ),
+                        Quantity(
+                            'n_quantum_numbers',
+                            r'(\d+), ?-?\d+,[0-9.]+',
+                            repeats=True,
+                            dtype=int,
+                        ),
+                        Quantity(
+                            'kappas',
+                            r'\d+, ?(-?\d+),[0-9.]+',
+                            repeats=True,
+                            dtype=int,
+                        ),
+                    ]
+                ),
+            ),
+        ]
 
 
 class In2Parser(TextParser):
@@ -642,6 +680,7 @@ class Wien2kParser:
             'VX_LDA': ['HF_X'],
         }
 
+        self.inc_parser = IncParser()
         self.out_parser = OutParser()
         self.in0_parser = In0Parser()
         self.in1_parser = In1Parser()
@@ -1011,6 +1050,10 @@ class Wien2kParser:
             sec_method.x_wien2k_ifft = fft[:3]
             sec_method.x_wien2k_ifft_factor = fft[3]
 
+        # find inc file and set as a mainfile for Wien2kParser
+        inc_file = self.get_wien2k_file('inc')
+        self.inc_parser.mainfile = inc_file
+
         # read cut off settings from in1
         in1_file = self.get_wien2k_file('in1')
         if in1_file is None:
@@ -1053,7 +1096,44 @@ class Wien2kParser:
             sec_method.k_mesh = sec_k_mesh
             sec_k_mesh.points = kpoints[0]
             sec_k_mesh.weights = kpoints[1]
-
+        if self.inc_parser.mainfile:
+            self.inc_parser.parse()
+            atoms = self.inc_parser.get('one_atom')
+            # Calculations of relativistic quantum numbers are based
+            # on Table 6.6 in Wien2k userguide
+            # http://www.wien2k.at/reg_user/textbooks/usersguide.pdf
+            for atom_index, atom in enumerate(atoms):
+                kappas = atom.get('kappas')
+                n_quantum_numbers = atom.get('n_quantum_numbers')
+                occupancies = atom.get('occupancies')
+                number_of_orbitals = len(kappas)
+                for orbital in range(number_of_orbitals):
+                    max_occupancy = abs(kappas[orbital] * 2)
+                    occupancy = int(occupancies[orbital])
+                    if occupancy < max_occupancy:
+                        if kappas[orbital] >= 0:
+                            spin_quantum_number = -1
+                        else:
+                            spin_quantum_number = 1
+                        j_quantum_number = (
+                            -kappas[orbital] / spin_quantum_number - 1 / 2
+                        )
+                        l_quantum_number = j_quantum_number - (spin_quantum_number / 2)
+                        electrons_excited = max_occupancy - occupancy
+                        n_quantum_number = n_quantum_numbers[orbital]
+                        atom_par = sec_method.atom_parameters
+                        atom_obj = AtomParameters()
+                        atom_obj.atom_index = atom_index
+                        core_hole = CoreHole()
+                        atom_obj.core_hole = core_hole
+                        j_quantum_number = np.array([j_quantum_number])
+                        core_hole.j_quantum_number = j_quantum_number
+                        core_hole.l_quantum_number = l_quantum_number
+                        core_hole.n_quantum_number = n_quantum_number
+                        core_hole.n_electrons_excited = electrons_excited
+                        core_hole.occupation = occupancy
+                        atom_par.append(atom_obj)
+                        break
         # basis
         if self.in1_parser.mainfile:
             self.in1_parser.parse()

@@ -32,12 +32,12 @@ respective file format. They both use separate file (:class:`RunFileParser`) and
 from typing import List, Any, Union, Optional
 import os
 import numpy as np
-import logging
 from datetime import datetime
 import ase
 import re
 from xml.sax import ContentHandler, make_parser  # type: ignore
 
+from nomad.utils import get_logger
 from nomad.units import ureg
 from nomad.parsing.file_parser import FileParser
 from nomad.parsing.file_parser.text_parser import TextParser, Quantity
@@ -214,14 +214,32 @@ class ContentParser:
             'ML': ['VDW_XC_DF2'],
             'CX': ['VDW_XC_DF_CX'],
             'TPSS': ['MGGA_X_TPSS', 'MGGA_C_TPSS'],
-            'RTPSS': ['MGGA_X_RTPSS'],
-            'M06L': ['MGGA_C_M06_L'],
-            'MS0': ['MGGA_X_MS0'],
-            'MS1': ['MGGA_X_MS1'],
-            'MS2': ['MGGA_X_MS2'],
-            'SCAN': ['MGGA_X_SCAN'],
+            'TPSS_X': ['MGGA_X_TPSS'],
+            'TPSS_C': ['MGGA_C_TPSS'],
+            'RTPSS': ['MGGA_X_RTPSS', 'MGGA_C_RTPSS'],
+            'RTPSS_X': ['MGGA_X_RTPSS'],
+            'RTPSS_C': ['MGGA_C_RTPSS'],
+            'M06L': ['MGGA_X_M06_L', 'MGGA_C_M06_L'],
+            'M06L_X': ['MGGA_X_M06_L'],
+            'M06L_C': ['MGGA_C_M06_L'],
+            'MS0': ['MGGA_X_MS0', 'MGGA_C_MS0'],
+            'MS0_X': ['MGGA_X_MS0'],
+            'MS0_C': ['MGGA_C_MS0'],
+            'MS1': ['MGGA_X_MS1', 'MGGA_C_MS1'],
+            'MS1_X': ['MGGA_X_MS1'],
+            'MS1_C': ['MGGA_C_MS1'],
+            'MS2': ['MGGA_X_MS2', 'MGGA_X_MS2'],
+            'MS2_X': ['MGGA_X_MS2'],
+            'MS2_C': ['MGGA_C_MS2'],
+            'SCAN': ['MGGA_X_SCAN, MGGA_C_SCAN'],
+            'SCAN_X': ['MGGA_X_SCAN'],
+            'SCAN_C': ['MGGA_C_SCAN'],
             'RSCAN': ['MGGA_X_RSCAN', 'MGGA_C_RSCAN'],
+            'RSCAN_X': ['MGGA_X_RSCAN'],
+            'RSCAN_C': ['MGGA_C_RSCAN'],
             'R2SCAN': ['MGGA_X_R2SCAN', 'MGGA_C_R2SCAN'],
+            'R2SCAN_X': ['MGGA_X_R2SCAN'],
+            'R2SCAN_C': ['MGGA_C_R2SCAN'],
             'SCANL': ['MGGA_X_SCANL', 'MGGA_C_SCANL'],
             'RSCANL': [],  # not in LibXC, nor any paper, just deorbitalized SCANL
             'R2SCANL': ['MGGA_X_R2SCANL', 'MGGA_C_R2SCANL'],
@@ -1127,7 +1145,8 @@ class RunFileParser(FileParser):
         content_handler = RunXmlContentHandler()
         parser.setContentHandler(content_handler)
         try:
-            parser.parse(self.mainfile_obj)
+            with self.open_mainfile_obj() as f:
+                parser.parse(f)
         except Exception as e:
             # support broken XML structure
             if self.logger:
@@ -2207,13 +2226,14 @@ class VASPParser:
                     else time_initial
                 )
                 sec_scf = parse_energy(n, n_scf)
-                sec_scf.time_calculation = time_scf[n_scf][-1]
+                if time_scf[n_scf] is not None:
+                    sec_scf.time_calculation = time_scf[n_scf][-1]
                 if sec_scf.time_calculation:
                     sec_scf.time_physical = time_initial + sec_scf.time_calculation
             if not sec_scc.time_calculation:
-                sec_scc.time_calculation = sum(
-                    [scf.time_calculation for scf in sec_scc.scf_iteration]
-                )
+                times = [scf.time_calculation for scf in sec_scc.scf_iteration]
+                if None not in times:
+                    sec_scc.time_calculation = sum(times)
                 if sec_scc.time_calculation:
                     sec_scc.time_physical = sec_scc.scf_iteration[-1].time_physical
 
@@ -2285,7 +2305,7 @@ class VASPParser:
     def parse(self, filepath, archive, logger):
         self.filepath = filepath
         self.archive = archive
-        self.logger = logging.getLogger(__name__) if logger is None else logger
+        self.logger = get_logger(__name__) if logger is None else logger
         self.init_parser(filepath, logger)
 
         sec_run = Run()

@@ -1,19 +1,19 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=61.0.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = 'electronicparsers'
-version = '1.1'
+name = 'nomad-parser-plugins-electronic'
+dynamic = ["version"]
 description = 'Collection of NOMAD parsers for electronic structure codes.'
 readme = "README.md"
 authors = [{ name = "The NOMAD Authors" }]
 license = { file = "LICENSE" }
 dependencies = [
     "nomad-lab>=1.3.6.dev1",
-    "nomad-schema-plugin-simulation-workflow@git+https://github.com/nomad-coe/nomad-schema-plugin-simulation-workflow.git@develop",
-    "nomad-schema-plugin-run@git+https://github.com/nomad-coe/nomad-schema-plugin-run.git@develop",
-    "simulationparsers@git+https://github.com/nomad-coe/simulation-parsers.git@develop",
+    "nomad-schema-plugin-simulation-workflow>=1.0.1",
+    "nomad-schema-plugin-run>=1.0.1",
+    "nomad-parser-plugins-simulation>=1.0.2",
     "lxml>=5.2",
     "netCDF4==1.6.5",
     "h5py>=3.6.0",
@@ -91,6 +91,8 @@ line-ending = "auto"
 
 [tool.setuptools.packages.find]
 include = ["electronicparsers*"]
+
+[tool.setuptools_scm]
 
 [tool.mypy]
 strict = false
