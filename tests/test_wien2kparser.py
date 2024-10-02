@@ -21,7 +21,10 @@ import numpy as np
 
 from nomad.datamodel import EntryArchive
 from electronicparsers.wien2k import Wien2kParser
-
+from runschema.method import (
+    AtomParameters,
+    CoreHole,
+)
 
 def approx(value, abs=0, rel=1e-6):
     return pytest.approx(value, abs=abs, rel=rel)
@@ -121,3 +124,16 @@ def test_dos(parser, caplog):
     assert sec_dos_up.species_projected[1].value[926].magnitude == approx(
         2.7395685667470246e17
     )
+
+def test_core_hole(parser, caplog):
+    archive = EntryArchive()
+    parser.parse('tests/data/wien2k/TiN-corehole/TiN-corehole.scf', archive, None)
+
+    sec_method = archive.run[0].method[0]
+    atom_par = sec_method.atom_parameters[0]
+    assert atom_par.atom_index == 2
+    assert atom_par.core_hole.n_electrons_excited == 1
+    assert atom_par.core_hole.l_quantum_number == 1
+    assert atom_par.core_hole.j_quantum_number == 1.5
+    assert atom_par.core_hole.n_quantum_number == 2
+    assert atom_par.core_hole.occupation == 3
