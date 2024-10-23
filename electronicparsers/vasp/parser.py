@@ -2259,7 +2259,7 @@ class VASPParser:
             sec_scc.method_ref = sec_run.method[-1]
 
             # eigenvalues
-            parse_eigenvalues(n)
+            # parse_eigenvalues(n)
 
             # dos
             parse_dos(n)
