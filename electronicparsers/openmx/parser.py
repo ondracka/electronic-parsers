@@ -262,7 +262,7 @@ mainfile_parser = TextParser(
             'scf.Kgrid',
             r'scf.Kgrid\s+(\d+\s+\d+\s+\d+)',
             repeats=False,
-        )
+        ),
         Quantity('scf.dftD', r'scf.dftD\s+([a-z]+)', repeats=False),
         Quantity('version.dftD', r'version.dftD\s+([23])', repeats=False),
         Quantity(
