@@ -722,8 +722,6 @@ class OutcarContentParser(ContentParser):
                 header = self.parser.get('header')
                 if header is not None and 'gamma' in header['subversion']:
                     self._kpoints_info['points'] = [[0.0, 0.0, 0.0]]
-                    self._kpoints_info['multiplicities'] = [1]
-                    self._kpoints_info['weights'] = [1.0]
         return self._kpoints_info
 
     @property
@@ -1711,8 +1709,12 @@ class VASPParser:
             quantity_def = sec_k_mesh.m_def.all_quantities.get(key)
             if val is not None and quantity_def is not None:
                 sec_k_mesh.m_set(quantity_def, val)
-        if sec_k_mesh.points is None:
+        if 'gamma' in self.parser.header.get('subversion', ''):
             sec_k_mesh.points = [[0.0] * 3]
+            sec_k_mesh.multiplicities = [1]
+            sec_k_mesh.weights = [1.0]
+            sec_k_mesh.grid = [1, 1, 1]
+            sec_k_mesh.sampling_method = 'Gamma-centered'
 
     def parse_core_hole(self) -> tuple[Optional[CoreHole], Optional[AtomsGroup], int]:
         """
