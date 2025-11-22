@@ -302,6 +302,10 @@ class ContentParser:
         return self.incar.get('ISPIN', 1)
 
     @property
+    def lnoncollinear(self):
+        return self.incar.get('LNONCOLLINEAR', False)
+
+    @property
     def ibrion(self):
         val = self.incar.get('IBRION,', None)
         if val is None:
@@ -1754,6 +1758,8 @@ class VASPParser:
         sec_method.electronic = Electronic(
             method='DFT+U' if self.parser.incar.get('LDAU', False) else 'DFT'
         )
+        if not self.parser.lnoncollinear:
+            sec_method.electronic.n_spin_channels = self.parser.ispin
 
         # input/output incar
         self.parse_incarsinout()

@@ -72,6 +72,7 @@ def test_vasprunxml_static(parser):
     assert len(sec_method.x_vasp_incar_in) == 27
     assert len(sec_method.x_vasp_incar_out) == 112
     assert sec_method.x_vasp_incar_in['LCHARG']
+    assert sec_method.electronic.n_spin_channels == 1
     assert len(sec_method.dft.xc_functional.exchange) == 1
 
     # basis set
@@ -168,6 +169,7 @@ def test_vasprunxml_relax(parser):
     assert sec_basis_set[1].type == 'plane waves'
     assert sec_basis_set[1].scope == ['augmentation']
     assert sec_basis_set[1].cutoff.to('eV').magnitude == approx(543.281)
+    assert sec_method.electronic.n_spin_channels == 2
 
     sec_sccs = archive.run[0].calculation
     assert len(sec_sccs) == 3
@@ -277,6 +279,7 @@ def test_outcar(parser):
     assert sec_run.time_run.date_start.magnitude == 1378501941.0
 
     sec_method = sec_run.method[0]
+    assert sec_method.electronic.n_spin_channels == 1
     # basis set
     sec_representation = sec_method.electrons_representation[0]
     sec_basis_set = sec_representation.basis_set
@@ -357,6 +360,7 @@ def test_outcar_gamma(parser):
     assert sec_run.program.compilation_datetime.magnitude == 1586575726.0
 
     sec_method = sec_run.method[0]
+    assert sec_method.electronic.n_spin_channels == 2
     k_mesh = sec_method.k_mesh
     assert np.all(k_mesh.points == np.array([[0.0, 0.0, 0.0]]))
     assert np.all(k_mesh.multiplicities == np.array([1]))
