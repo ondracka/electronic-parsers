@@ -72,6 +72,7 @@ def test_vasprunxml_static(parser):
     assert len(archive.run) == 1
 
     sec_run = archive.run[0]
+    assert sec_run.clean_end
     assert sec_run.program.version == "4.6.35 3Apr08 complex parallel LinuxIFC"
 
     assert sec_run.time_run.date_start.magnitude == 1366564273.0
@@ -371,6 +372,7 @@ def test_outcar_oasis_uniform_mesh(parser):
     archive = EntryArchive()
     parser.parse(path, archive, None)
 
+    assert archive.run[0].clean_end
     k_mesh = archive.run[0].method[0].k_mesh
     assert len(k_mesh.points) == 104
     assert sum(k_mesh.multiplicities) == approx(2744)
@@ -554,6 +556,7 @@ def test_vasp_potcar_title_xc_fallback(title, expected):
 def test_broken_xml(parser):
     archive = EntryArchive()
     parser.parse('tests/data/vasp/vasprun.xml.broken', archive, None)
+    assert archive.run[0].clean_end is False
 
 
 def test_hybrid(parser):

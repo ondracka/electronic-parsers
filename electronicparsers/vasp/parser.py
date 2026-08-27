@@ -845,6 +845,12 @@ class OutcarTextParser(TextParser):
                     ]
                 ),
             ),
+            Quantity(
+                'clean_end',
+                r'(General timing and accounting informations for this job:)',
+                repeats=False,
+                convert=False,
+            ),
         ]
 
 
@@ -913,6 +919,11 @@ class OutcarContentParser(ContentParser):
         if self._calculations is None:
             self._calculations = self.parser.get('calculation')
         return self._calculations
+
+    @property
+    def clean_end(self):
+        """Whether VASP wrote its final OUTCAR timing/accounting footer."""
+        return self.parser.get('clean_end') is not None
 
     @property
     def n_calculations(self):
@@ -1404,17 +1415,22 @@ class RunXmlContentHandler(ContentHandler):
 
 class RunFileParser(FileParser):
     def parse(self):
+        self._clean_end = False
         parser = make_parser()
         content_handler = RunXmlContentHandler()
         parser.setContentHandler(content_handler)
+        mainfile_obj = self.open(self.mainfile)
         try:
-            with self.open_mainfile_obj() as f:
-                parser.parse(f)
+            parser.parse(mainfile_obj)
+            self._clean_end = True
         except Exception as e:
             # support broken XML structure
             if self.logger:
                 self.logger.warning('could not parse all xml', exc_info=e)
             content_handler.clear_stack()
+        finally:
+            if mainfile_obj is not None:
+                mainfile_obj.close()
 
         self._results = content_handler
 
@@ -1425,6 +1441,11 @@ class RunFileParser(FileParser):
     @property
     def n_calculations(self):
         return self._results.n_calculations
+
+    @property
+    def clean_end(self):
+        """Whether SAX reached the end of a well-formed vasprun.xml."""
+        return self._clean_end
 
 
 class RunContentParser(ContentParser):
@@ -1560,6 +1581,10 @@ class RunContentParser(ContentParser):
     @property
     def n_calculations(self):
         return self.parser.n_calculations
+
+    @property
+    def clean_end(self):
+        return self.parser.clean_end
 
     sampling_method_mapping = {
         'Automatic': 'Gamma-centered',
@@ -2692,5 +2717,6 @@ class VASPParser:
 
         # Note: the logic for a proper topology might have to become more complex
         self.parse_configurations()
+        sec_run.clean_end = self.parser.clean_end
 
         self.parse_workflow()
