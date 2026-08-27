@@ -49,6 +49,7 @@ def test_gs(parser):
     assert len(archive.run) == 1
 
     sec_run = archive.run[0]
+    assert sec_run.clean_end
     assert sec_run.program.version == 'CARBON'
 
     sec_method = sec_run.method[0]
@@ -94,6 +95,16 @@ def test_gs(parser):
     sec_eig = sec_scc.eigenvalues[0]
     assert np.shape(sec_eig.kpoints) == (30, 3)
     assert sec_eig.energies[0][9][4].magnitude == approx(2.74680139e-18)
+
+
+def test_truncated_groundstate_sets_clean_end_false(parser, tmp_path):
+    source = Path('tests/data/exciting/C_gs/INFO.OUT').read_text()
+    output = tmp_path / 'INFO.OUT'
+    output.write_text(source.rsplit('| EXCITING', maxsplit=1)[0])
+
+    archive = EntryArchive()
+    parser.parse(str(output), archive, None)
+    assert archive.run[0].clean_end is False
 
 
 def test_dft_d2_output_detection(parser, tmp_path):

@@ -1480,6 +1480,15 @@ class ExcitingInfoParser(TextParser):
             )
         )
 
+        self._quantities.append(
+            Quantity(
+                'clean_end',
+                r'(\|\s*EXCITING[^\n]*\bstopped\s*=*)',
+                repeats=False,
+                convert=False,
+            )
+        )
+
     def get_atom_labels(self, section):
         labels = section.get('symbols')
 
@@ -3415,6 +3424,8 @@ class ExcitingParser(BeyondDFTWorkflowsParser):
             version=self.info_parser.get('program_version', '').strip(),
             version_internal=self.info_parser.hash_id,
         )
+        if self._calculation_type is None:
+            sec_run.clean_end = self.info_parser.get('clean_end') is not None
 
         # method goes first since reference needed for sec_scc
         if self._calculation_type == 'gw':
