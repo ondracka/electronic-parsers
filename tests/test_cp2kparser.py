@@ -16,6 +16,8 @@
 # limitations under the License.
 #
 
+from pathlib import Path
+
 import pytest
 
 from nomad.datamodel import EntryArchive
@@ -137,6 +139,39 @@ def test_single_point(parser):
     assert False not in sec_system.atoms.periodic
 
     assert archive.workflow2.m_def.name == 'SinglePoint'
+
+
+def test_dft_plus_u(parser, tmp_path):
+    """DFT+U settings are read from CP2K's executed atomic-kind summary."""
+    data_dir = Path('tests/data/cp2k/single_point')
+    output = (data_dir / 'si_bulk8.out').read_text()
+    dft_plus_u_summary = """
+      A DFT+U correction is applied to atoms of this atomic kind:
+        Angular quantum momentum number L:                                  2
+        U(eff) = (U - J) value in [eV]:                                  4.200
+        Hund J value in [eV]:                                             0.700
+"""
+    output = output.replace(
+        '\n\n\n MOLECULE KIND INFORMATION',
+        f'\n{dft_plus_u_summary}\n\n MOLECULE KIND INFORMATION',
+        1,
+    )
+    output = output.replace(
+        ' DFT| Spin restricted', ' DFT+U| active\n DFT| Spin restricted', 1
+    )
+    (tmp_path / 'si_bulk8.out').write_text(output)
+    (tmp_path / 'si_bulk8.inp').write_text((data_dir / 'si_bulk8.inp').read_text())
+
+    archive = EntryArchive()
+    parser.parse(str(tmp_path / 'si_bulk8.out'), archive, None)
+
+    method = archive.run[0].method[0]
+    assert method.electronic.method == 'DFT+U'
+    hubbard = method.atom_parameters[0].hubbard_kanamori_model
+    assert hubbard.orbital == 'd'
+    assert hubbard.u_effective.to('eV').magnitude == approx(4.2)
+    assert hubbard.j.to('eV').magnitude == approx(0.7)
+    assert hubbard.double_counting_correction == 'Dudarev'
 
 
 def test_unterminated_section(parser):

@@ -39,6 +39,7 @@ from runschema.method import (
     BasisSet,
     BasisSetContainer,
     AtomParameters,
+    HubbardKanamoriModel,
     Scf,
     Electronic,
     BasisSetAtomCentered,
@@ -783,6 +784,27 @@ class CP2KOutParser(TextParser):
                                         'basis_set_norm_type',
                                         r'Norm type:\s*(\d+)',
                                         dtype=int,
+                                    ),
+                                    Quantity(
+                                        'dft_plus_u',
+                                        r'(A DFT\+U correction is applied to atoms of this atomic kind)',
+                                    ),
+                                    Quantity(
+                                        'dft_plus_u_l',
+                                        r'Angular quantum momentum number L:\s*(\d+)',
+                                        dtype=int,
+                                    ),
+                                    Quantity(
+                                        'dft_plus_u_u_effective',
+                                        rf'U\(eff\) = \(U - J\) value in \[eV\]:\s*({re_float})',
+                                        dtype=float,
+                                        unit='eV',
+                                    ),
+                                    Quantity(
+                                        'dft_plus_u_j',
+                                        rf'Hund J value in \[eV\]:\s*({re_float})',
+                                        dtype=float,
+                                        unit='eV',
                                     ),
                                 ]
                                 + n_orbital_basis_quantities
@@ -2064,15 +2086,19 @@ class CP2KParser:
             )
         ]
         quickstep = self.out_parser.get(self._calculation_type, sec_method)
+        atom_records = quickstep.get('atomic_kind_information', {}).get('atom', [])
+        dft_plus_u_applied = any(
+            atom.get('dft_plus_u') is not None for atom in atom_records
+        )
 
         sec_dft = DFT()
         sec_method.dft = sec_dft
         # electronic structure method
         # TODO include methods
-        if quickstep.get('dft') is not None:
-            sec_method.electronic = Electronic(method='DFT')
-        elif quickstep.get('dft_u') is not None:
+        if quickstep.get('dft_u') is not None or dft_plus_u_applied:
             sec_method.electronic = Electronic(method='DFT+U')
+        elif quickstep.get('dft') is not None:
+            sec_method.electronic = Electronic(method='DFT')
         elif quickstep.get('mp2') is not None:
             sec_method.electronic = Electronic(method='MP2')
         elif quickstep.get('rpa') is not None:
@@ -2132,7 +2158,7 @@ class CP2KParser:
         if atomic_kind_info is not None:
             sec_atom_kinds = x_cp2k_section_atomic_kinds()
             sec_quickstep_settings.x_cp2k_section_atomic_kinds.append(sec_atom_kinds)
-            for atom in atomic_kind_info.get('atom', []):
+            for atom in atom_records:
                 # why necessary to make a separate section
                 sec_atom_kind = x_cp2k_section_atomic_kind()
                 sec_atom_kinds.x_cp2k_section_atomic_kind.append(sec_atom_kind)
@@ -2146,7 +2172,7 @@ class CP2KParser:
                             sec_atom_kind.m_get_quantity_definition(f'x_cp2k_{key}'),
                             str(val),
                         )
-                    else:
+                    elif not key.startswith('dft_plus_u'):
                         sec_kind_basis_set.m_set(
                             sec_kind_basis_set.m_get_quantity_definition(
                                 f'x_cp2k_{key}'
@@ -2161,6 +2187,16 @@ class CP2KParser:
                 sec_method_atom_kind.atom_number = self.get_atomic_number(
                     atom_kind_label
                 )
+                if atom.get('dft_plus_u') is not None:
+                    orbital = {0: 's', 1: 'p', 2: 'd', 3: 'f'}.get(
+                        atom.get('dft_plus_u_l')
+                    )
+                    sec_method_atom_kind.hubbard_kanamori_model = HubbardKanamoriModel(
+                        orbital=orbital,
+                        u_effective=atom.get('dft_plus_u_u_effective'),
+                        j=atom.get('dft_plus_u_j'),
+                        double_counting_correction='Dudarev',
+                    )
 
         total_maximum_numbers = quickstep.get('total_maximum_numbers', None)
         if total_maximum_numbers is not None:
