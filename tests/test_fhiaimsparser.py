@@ -191,6 +191,22 @@ def test_old_scf_recovers_terminal_energy_change_after_section(parser, tmp_path)
     assert energy_change.to('eV').magnitude == approx(-9.157e-10)
 
 
+def test_k_grid_density_uses_executed_resulting_grid(parser, tmp_path):
+    source = Path('tests/data/fhiaims/Fe_scf_spinpol/out.out').read_text()
+    source = source.replace(
+        '    k_grid             16 16 16',
+        '    k_grid_density      5\n'
+        '  The resulting k-point grid is:        10        12        10',
+    )
+    mainfile = tmp_path / 'k_grid_density.out'
+    mainfile.write_text(source)
+
+    archive = EntryArchive()
+    parser.parse(str(mainfile), archive, None)
+
+    assert list(archive.run[0].method[0].k_mesh.grid) == [10, 12, 10]
+
+
 def test_geomopt(parser):
     archive = EntryArchive()
     parser.parse('tests/data/fhiaims/Si_geomopt/out.out', archive, None)

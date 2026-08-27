@@ -967,7 +967,12 @@ class FHIAimsOutParser(TextParser):
                     y.lower() for v in x.split(' ') for y in v.split('-')
                 ],
             ),
-            Quantity('k_grid', rf'{re_n} *k\_grid\s*([\d ]+)', repeats=False),
+            Quantity(
+                'k_grid',
+                rf'{re_n} *(?:k_grid|The resulting k-point grid is:)\s*'
+                r'(\d+[ \t]+\d+[ \t]+\d+)',
+                repeats=False,
+            ),
             Quantity(
                 'freq_grid_type',
                 rf'{re_n}\s*Initialising([\w\-\s]+)time and frequency grids',
