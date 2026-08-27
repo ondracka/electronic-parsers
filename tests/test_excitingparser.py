@@ -19,6 +19,7 @@
 import pytest
 import numpy as np
 import os
+from pathlib import Path
 
 from nomad.units import ureg
 from nomad.datamodel import EntryArchive
@@ -55,6 +56,8 @@ def test_gs(parser):
     assert list(sec_method.k_mesh.offset) == [0.0] * 3
     assert sec_method.electronic.n_spin_channels == 1
     assert sec_method.electronic.smearing.width == approx(4.35974472e-22)
+    assert sec_method.electronic.van_der_waals_method == ''
+    assert sec_method.electronic.m_to_dict()['van_der_waals_method'] == ''
     assert sec_method.dft.xc_functional.exchange[0].name == 'GGA_X_PBE_SOL'
     assert sec_method.x_exciting_scf_threshold_force_change.magnitude == approx(
         4.11936175e-12
@@ -90,6 +93,18 @@ def test_gs(parser):
     sec_eig = sec_scc.eigenvalues[0]
     assert np.shape(sec_eig.kpoints) == (30, 3)
     assert sec_eig.energies[0][9][4].magnitude == approx(2.74680139e-18)
+
+
+def test_dft_d2_output_detection(parser, tmp_path):
+    info_file = tmp_path / 'INFO.OUT'
+    source = Path('tests/data/exciting/C_gs/INFO.OUT').read_text()
+    info_file.write_text(source + '\nDFT-D2 dispersion correction : -0.001 Ha\n')
+
+    archive = EntryArchive()
+    parser.parse(str(info_file), archive, None)
+    electronic = archive.run[0].method[0].electronic
+    assert electronic.van_der_waals_method == 'G06'
+    assert electronic.m_to_dict()['van_der_waals_method'] == 'G06'
 
 
 def test_strucopt(parser):

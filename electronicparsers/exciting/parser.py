@@ -972,6 +972,12 @@ class ExcitingInfoParser(TextParser):
                 flatten=False,
             ),
             Quantity('hash_id', r'version hash id: +(\S+)', dtype=str),
+            Quantity(
+                'dft_d2_dispersion',
+                r'(DFT-D2 dispersion correction)',
+                repeats=False,
+                convert=False,
+            ),
         ]
 
         initialization_quantities = [
@@ -2793,6 +2799,11 @@ class ExcitingParser(BeyondDFTWorkflowsParser):
         sec_electronic = Electronic()
         sec_method.electronic = sec_electronic
         sec_electronic.method = 'DFT'
+        sec_electronic.van_der_waals_method = (
+            'G06'
+            if self.info_parser.get('dft_d2_dispersion') is not None
+            else ''
+        )
 
         smearing_kind_map = {
             'Gaussian': 'gaussian',
