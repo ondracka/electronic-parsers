@@ -65,6 +65,21 @@ def test_gpw(parser):
     assert sec_scc.calculation_converged
 
 
+def test_gpw_oasis_forces(parser):
+    """Regression for local Oasis entry MsM4VH7RzIR0-crqz9wc_2kQyu1u."""
+    archive = EntryArchive()
+    parser.parse('tests/data/gpaw/Si2_oasis.gpw', archive, None)
+
+    forces = archive.run[0].calculation[0].forces.free
+    assert np.shape(forces.value) == (2, 3)
+    assert forces.value[0][0].to('hartree / bohr').magnitude == approx(
+        -1.4456028966473392e-19
+    )
+    assert forces.value_raw[1][2].to('hartree / bohr').magnitude == approx(
+        -7.228014483236696e-20
+    )
+
+
 def test_gpw2(parser):
     archive = EntryArchive()
     parser.parse('tests/data/gpaw/Si_pw.gpw2', archive, None)
