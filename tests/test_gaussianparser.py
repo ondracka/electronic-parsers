@@ -40,6 +40,7 @@ def test_scf_spinpol(parser):
 
     sec_runs = archive.run
     assert len(sec_runs) == 1
+    assert sec_runs[0].clean_end
     assert sec_runs[0].x_gaussian_program_implementation == 'EM64L-G09RevB.01'
     assert sec_runs[0].x_gaussian_number_of_processors == '8'
     assert (
@@ -85,6 +86,25 @@ def test_scf_spinpol(parser):
         -1.05675722e-15
     )
     assert sec_sccs[0].calculation_converged
+
+
+def test_error_termination_sets_clean_end_false(parser, tmp_path):
+    source = Path('tests/data/gaussian/Al_scf/Al.out').read_text()
+    normal_line = next(
+        line for line in source.splitlines(keepends=True) if 'Normal termination' in line
+    )
+    output = tmp_path / 'Al_error.out'
+    output.write_text(
+        source.replace(
+            normal_line,
+            ' Error termination via Lnk1e in /gaussian/l9999.exe.\n',
+        )
+    )
+
+    archive = EntryArchive()
+    parser.parse(str(output), archive, None)
+    assert len(archive.run) == 1
+    assert archive.run[0].clean_end is False
 
 
 @pytest.mark.parametrize(

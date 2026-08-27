@@ -628,7 +628,7 @@ class GaussianOutParser(TextParser):
             Quantity(
                 'system',
                 r'((?:Standard|Z-Matrix|Input) orientation:[\s\S]+?)'
-                r'(?:Predicted change in Energy|PREDICTED CHANGE IN ENERGY|Z-Matrix orientation|Normal termination)',
+                r'(?:Predicted change in Energy|PREDICTED CHANGE IN ENERGY|Z-Matrix orientation|(?:Normal|Error) termination)',
                 repeats=True,
                 sub_parser=TextParser(
                     quantities=[
@@ -673,7 +673,7 @@ class GaussianOutParser(TextParser):
             Quantity('calc_type', r'\s-+\n\sGaussian ([\w\s]+)\n', convert=lambda x: ' '.join(x)),
             Quantity(
                 'run',
-                r'(-{10}\s*#[\s\S]+?Normal termination.*\n)',
+                r'(-{10}\s*#[\s\S]+?(?:Normal|Error) termination.*\n)',
                 repeats=True,
                 sub_parser=TextParser(quantities=run_quantities),
             ),
@@ -1562,6 +1562,7 @@ class GaussianParser:
             sec_run.x_gaussian_program_implementation = program[1]
             sec_run.x_gaussian_program_release_date = program[2]
             sec_run.x_gaussian_program_execution_date = program[3]
+            sec_run.clean_end = runs[n].get('program_termination_date') is not None
 
             for key in [
                 'x_gaussian_chk_file',
