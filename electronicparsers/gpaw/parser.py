@@ -139,6 +139,22 @@ class GPWParser(TarParser):
         return self._info
 
     def get_parameter(self, key, unit=None):
+        if key in ('energy_total', 'energy_free'):
+            parameters = self.info['parameter']
+            components = [
+                parameters.get(name)
+                for name in ('ekin', 'epot', 'ebar', 'exc')
+            ]
+            if any(value is None for value in components):
+                return None
+            external = parameters.get('eext') or 0.0
+            entropy = parameters.get('s') or 0.0
+            free_energy = sum(components) + external - entropy
+            if key == 'energy_free':
+                return free_energy
+            # GPAW reports the zero-temperature extrapolation halfway between
+            # the free energy E-TS and the energy E.
+            return free_energy + 0.5 * entropy
         key = self._info_map.get(key, key)
         return self.info['parameter'].get(key.lower(), None)
 

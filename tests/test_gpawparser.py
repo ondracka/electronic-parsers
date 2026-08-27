@@ -62,7 +62,8 @@ def test_gpw(parser):
     assert sec_system.atoms.positions[0][2].magnitude == approx(2.73716576e-10)
 
     sec_scc = archive.run[0].calculation[0]
-    assert sec_scc.energy.total.value.magnitude == approx(-1.51414975e-18)
+    assert sec_scc.energy.total.value.magnitude == approx(-1.01554082e-18)
+    assert sec_scc.energy.free.value.magnitude == approx(-1.01554082e-18)
     assert sec_scc.x_gpaw_fixed_spin_Sz == 0.0
     assert sec_scc.energy.fermi.magnitude == approx(-4.99922789e-19)
     # there is supposed to be magnetic but read eigenvalues are not spinpol
@@ -121,7 +122,15 @@ def test_gpw_oasis_forces(parser):
     assert electronic.van_der_waals_method == ''
     assert electronic.m_to_dict()['van_der_waals_method'] == ''
 
-    forces = archive.run[0].calculation[0].forces.free
+    calculation = archive.run[0].calculation[0]
+    assert calculation.energy.total.value.to('eV').magnitude == approx(
+        -10.79136873357707
+    )
+    assert calculation.energy.free.value.to('eV').magnitude == approx(
+        -10.791626120382862
+    )
+
+    forces = calculation.forces.free
     assert np.shape(forces.value) == (2, 3)
     assert forces.value[0][0].to('hartree / bohr').magnitude == approx(
         -1.4456028966473392e-19
