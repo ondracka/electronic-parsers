@@ -48,6 +48,10 @@ def test_versioning(parser):
 
     sec_run = archive.run[0]
     assert sec_run.system[0].atoms.labels == 287 * ['Se'] + 144 * ['W']
+    assert sec_run.method[0].electronic.van_der_waals_method == 'G10'
+    assert (
+        sec_run.method[0].electronic.m_to_dict()['van_der_waals_method'] == 'G10'
+    )
     assert list(sec_run.system[0].atoms.positions[0].to('angstrom').magnitude) == [
         11.616523,
         1.916229,
@@ -94,6 +98,8 @@ def test_single_point(parser):
         4.35974472220717e-25
     )
     assert sec_method.dft.xc_functional.contributions[0].name == 'LDA_XC_TETER93'
+    assert sec_method.electronic.van_der_waals_method == ''
+    assert sec_method.electronic.m_to_dict()['van_der_waals_method'] == ''
     sec_qs_settings = sec_method.x_cp2k_section_quickstep_settings[0]
     assert sec_qs_settings.x_cp2k_planewave_cutoff == 150.0
     sec_atom_kind = sec_qs_settings.x_cp2k_section_atomic_kinds[
@@ -157,6 +163,8 @@ def test_pdos(parser):
     assert sec_run.method[-1].dft.xc_functional.exchange[1].name == 'GGA_X_PBE'
     assert sec_run.method[-1].dft.xc_functional.correlation[0].name == 'MGGA_C_TPSS'
     assert sec_run.method[-1].dft.xc_functional.correlation[1].name == 'GGA_C_PBE'
+    assert sec_run.method[-1].electronic.van_der_waals_method == 'XC'
+    assert sec_run.method[-1].electronic.m_to_dict()['van_der_waals_method'] == 'XC'
 
     sec_scc = sec_run.calculation
     assert len(sec_scc) == 1

@@ -748,6 +748,11 @@ class CP2KOutParser(TextParser):
                 repeats=True,
             ),
             Quantity(
+                'vdw_nonlocal',
+                r' vdW POTENTIAL\|\s*(Non-local Functional)',
+                repeats=False,
+            ),
+            Quantity(
                 'qs',
                 r' QS\| ((?:Method|Density cutoff)).*?:( {2}) +(.+)',
                 str_operation=str_to_header,
@@ -2092,11 +2097,16 @@ class CP2KParser:
 
         # van der Waals settings
         vdw = self.settings['vdw']
-        if vdw:
+        vdw_name = ''
+        if quickstep.get('vdw_nonlocal') is not None:
+            vdw_name = 'XC'
+        elif vdw:
             # TODO include vdw parameters
             for val in vdw:
-                if (vdw_name := self._vdw_map.get(val)) is not None:
-                    sec_method.van_der_waals_method = vdw_name
+                if (mapped_name := self._vdw_map.get(val)) is not None:
+                    vdw_name = mapped_name
+        if sec_method.electronic is not None:
+            sec_method.electronic.van_der_waals_method = vdw_name
 
         stress_method = self.inp_parser.get('FORCE_EVAL/STRESS_TENSOR')
         if stress_method is not None:
