@@ -357,6 +357,13 @@ class GPAWParser:
             'mBEEF': ['MGGA_X_MBEEF', 'GGA_C_PBE_SOL'],
         }
 
+    @staticmethod
+    def _get_vdw_method(xc_functional):
+        """Classify GPAW's nonlocal vdW density functionals."""
+        if isinstance(xc_functional, str) and 'vdw' in xc_functional.lower():
+            return 'XC'
+        return ''
+
     def init_parser(self, filepath, logger):
         self.parser = self.gpw_parser
         self.parser.mainfile = filepath
@@ -478,6 +485,7 @@ class GPAWParser:
         sec_xc_functional = XCFunctional()
         sec_dft.xc_functional = sec_xc_functional
         xc_functional = self.parser.get_parameter('xcfunctional')
+        sec_electronic.van_der_waals_method = self._get_vdw_method(xc_functional)
         for xc in self._xc_map.get(xc_functional, [xc_functional]):
             if '_X_' in xc or xc.endswith('_X'):
                 sec_xc_functional.exchange.append(Functional(name=xc))

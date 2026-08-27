@@ -44,6 +44,8 @@ def test_gpw(parser):
     assert sec_method.scf.threshold_energy_change.magnitude == approx(1.42196374e-24)
     assert sec_method.electronic.smearing.width == 0.0
     assert sec_method.electronic.charge == 0.0
+    assert sec_method.electronic.van_der_waals_method == ''
+    assert sec_method.electronic.m_to_dict()['van_der_waals_method'] == ''
     assert sec_method.dft.xc_functional.correlation[0].name == 'LDA_C_PW'
     assert sec_method.x_gpaw_symmetry_time_reversal_switch
 
@@ -65,10 +67,22 @@ def test_gpw(parser):
     assert sec_scc.calculation_converged
 
 
+@pytest.mark.parametrize(
+    'xc_functional, expected',
+    [('PBE', ''), ('vdW-DF', 'XC'), ('vdW-DF2', 'XC'), ('mBEEF-vdW', 'XC')],
+)
+def test_van_der_waals_method_classification(xc_functional, expected):
+    assert GPAWParser._get_vdw_method(xc_functional) == expected
+
+
 def test_gpw_oasis_forces(parser):
     """Regression for local Oasis entry MsM4VH7RzIR0-crqz9wc_2kQyu1u."""
     archive = EntryArchive()
     parser.parse('tests/data/gpaw/Si2_oasis.gpw', archive, None)
+
+    electronic = archive.run[0].method[0].electronic
+    assert electronic.van_der_waals_method == ''
+    assert electronic.m_to_dict()['van_der_waals_method'] == ''
 
     forces = archive.run[0].calculation[0].forces.free
     assert np.shape(forces.value) == (2, 3)
