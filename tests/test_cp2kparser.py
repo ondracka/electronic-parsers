@@ -66,6 +66,7 @@ def test_single_point(parser):
     parser.parse('tests/data/cp2k/single_point/si_bulk8.out', archive, None)
 
     sec_run = archive.run[0]
+    assert sec_run.clean_end
     assert sec_run.program.version == 'CP2K version 2.6.2'
     assert sec_run.x_cp2k_section_startinformation[0].x_cp2k_start_id == 8212
     assert sec_run.x_cp2k_section_end_information[0].x_cp2k_end_id == 8212
@@ -180,6 +181,7 @@ def test_unterminated_section(parser):
     parser.parse(
         'tests/data/cp2k/single_point/si_bulk8_unterminated.out', archive, None
     )
+    assert archive.run[0].clean_end is False
     assert archive.run[0].x_cp2k_section_startinformation[0].x_cp2k_start_id == 8212
 
 

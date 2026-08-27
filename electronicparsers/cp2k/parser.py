@@ -1502,6 +1502,7 @@ class CP2KParser:
         sec_run.x_cp2k_global_settings = global_settings if global_settings else None
 
         program_settings = self.settings.get('program', {})
+        sec_run.clean_end = program_settings.get('end_time') is not None
         if program_settings:
             sec_startinformation = x_cp2k_section_startinformation()
             sec_run.x_cp2k_section_startinformation.append(sec_startinformation)
