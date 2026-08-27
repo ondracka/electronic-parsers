@@ -376,7 +376,21 @@ def test_outcar_oasis_uniform_mesh(parser):
     assert sum(k_mesh.multiplicities) == approx(2744)
     assert list(k_mesh.grid) == [14, 14, 14]
     assert k_mesh.sampling_method == 'Gamma-centered'
-    assert archive.run[0].method[0].electronic.van_der_waals_method == ''
+    electronic = archive.run[0].method[0].electronic
+    assert electronic.van_der_waals_method == ''
+    assert electronic.n_electrons == approx(8.0)
+    assert electronic.charge.to('elementary_charge').magnitude == approx(0.0)
+
+
+def test_vasprun_oasis_charged_si(parser):
+    """Recover +1 e for local-Oasis entry RoZk0yxRn8FwFgIg_M_lx4rEB4B0."""
+    archive = EntryArchive()
+    parser.parse('tests/data/vasp/oasis_charged_si/vasprun.xml', archive, None)
+
+    method = archive.run[0].method[0]
+    assert method.atom_parameters[0].n_valence_electrons == approx(4.0)
+    assert method.electronic.n_electrons == approx(255.0)
+    assert method.electronic.charge.to('elementary_charge').magnitude == approx(1.0)
 
 
 def test_outcar_oasis_vdw_d3bj(parser):

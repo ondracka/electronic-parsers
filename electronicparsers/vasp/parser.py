@@ -2064,6 +2064,10 @@ class VASPParser:
                 sec_method_atom_kind.n_valence_electrons = pseudopotential['number'][
                     'ZVAL'
                 ]
+            elif i < len(atomtypes.get('valence', [])):
+                # vasprun.xml records the executed valence count in atominfo
+                # even when no separate POTCAR.stripped file is available.
+                sec_method_atom_kind.n_valence_electrons = atomtypes['valence'][i]
             title_tokens = _xc_setting_tokens(title)
             if title_tokens:
                 pp = Pseudopotential(name=' '.join(title_tokens))
@@ -2183,31 +2187,32 @@ class VASPParser:
 
         # perform electron counting
         # first establish a reference for the number of valence electrons in a neutral system
-        neutral_count = 0.0
-        for param, n_atoms in dict(
-            zip(
-                sec_method.atom_parameters,
-                self.parser.atom_info['atomtypes'].get('atomspertype', []),
-            )
-        ).items():
-            # correct based on core-holes
-            # since ZVAL information is centrally reported, it's all or nothing
-            try:
-                species_electrons = param.n_electrons
-            except AttributeError:
-                break
-            try:
-                species_electrons -= param.core_hole.n_electrons_excited
-            except AttributeError:
-                pass
-            neutral_count += species_electrons * n_atoms
-        # extract the number of valence electrons
-        sec_method.electronic.n_electrons = self.parser.incar.get(
-            'NELECT', neutral_count
+        atom_counts = self.parser.atom_info['atomtypes'].get('atomspertype', [])
+        neutral_count = (
+            0.0
+            if atom_counts and len(atom_counts) == len(sec_method.atom_parameters)
+            else None
         )
-        if neutral_count:
+        if neutral_count is not None:
+            for param, n_atoms in zip(sec_method.atom_parameters, atom_counts):
+                # Correct based on core-holes. Since ZVAL information is
+                # centrally reported, the neutral reference is all or nothing.
+                species_electrons = param.n_valence_electrons
+                if species_electrons is None:
+                    neutral_count = None
+                    break
+                try:
+                    species_electrons -= param.core_hole.n_electrons_excited
+                except AttributeError:
+                    pass
+                neutral_count += species_electrons * n_atoms
+        # extract the number of valence electrons
+        n_electrons = self.parser.incar.get('NELECT', neutral_count)
+        if n_electrons is not None:
+            sec_method.electronic.n_electrons = n_electrons
+        if neutral_count is not None and n_electrons is not None:
             sec_method.electronic.charge = (
-                neutral_count - sec_method.electronic.n_electrons
+                neutral_count - n_electrons
             ) * ureg.e
 
     def parse_gw(self):
