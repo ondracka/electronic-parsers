@@ -2302,6 +2302,11 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
 
         # atom species
         self.parse_topology()
+        if any(
+            atom_parameters.hubbard_kanamori_model is not None
+            for atom_parameters in sec_method.atom_parameters
+        ):
+            sec_electronic.method = 'DFT+U'
 
         # xc functional from output
         self.parse_xc_functional(sec_method, sec_dft)
