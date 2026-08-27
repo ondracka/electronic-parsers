@@ -55,6 +55,7 @@ def test_gs(parser):
     assert list(sec_method.k_mesh.grid) == [6] * 3
     assert list(sec_method.k_mesh.offset) == [0.0] * 3
     assert sec_method.electronic.n_spin_channels == 1
+    assert sec_method.electronic.method == 'DFT'
     assert sec_method.electronic.smearing.width == approx(4.35974472e-22)
     assert sec_method.electronic.van_der_waals_method == ''
     assert sec_method.electronic.m_to_dict()['van_der_waals_method'] == ''
@@ -167,6 +168,19 @@ def test_dos_spinpol(parser):
 
     sec_run = archive.run[0]
     sec_method = sec_run.method[0]
+    assert sec_method.electronic.method == 'DFT+U'
+    hubbard = next(
+        parameters.hubbard_kanamori_model
+        for parameters in sec_method.atom_parameters
+        if parameters.label == 'Ce'
+    )
+    assert hubbard.orbital == 'f'
+    assert hubbard.u.to('hartree').magnitude == approx(0.22)
+    assert hubbard.j.to('hartree').magnitude == approx(0.011)
+    assert hubbard.double_counting_correction == 'fully_localized_limit'
+    assert hubbard.m_to_dict()['u'] == approx(
+        (0.22 * ureg.hartree).to('joule').magnitude
+    )
     assert list(sec_method.k_mesh.grid) == [8] * 3
     assert list(sec_method.k_mesh.offset) == [0.0] * 3
 

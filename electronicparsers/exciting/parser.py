@@ -42,6 +42,7 @@ from runschema.method import (
     BasisSetContainer,
     OrbitalAPW,
     AtomParameters,
+    HubbardKanamoriModel,
     CoreHoleSpectra,
 )
 from runschema.system import System, Atoms
@@ -963,6 +964,33 @@ class ExcitingInfoParser(TextParser):
                 energies[v[0].strip()] = float(v[1]) * ureg.hartree
             return energies
 
+        def str_to_hubbard_parameters(val_in):
+            double_counting = val_in.splitlines()[1].strip()
+            if 'fully localised limit' in double_counting.lower():
+                double_counting = 'fully_localized_limit'
+            elif 'around mean field' in double_counting.lower():
+                double_counting = 'around_mean_field'
+
+            parameters = []
+            pattern = re.compile(
+                r'species\s*:\s*(\d+)\s*\(([^)]+)\),\s*l\s*=\s*(\d+),'
+                r'\s*U\s*=\s*([-+\d.Ee]+),\s*J\s*=\s*([-+\d.Ee]+)'
+            )
+            for species_index, label, orbital, u, j in pattern.findall(val_in):
+                parameters.append(
+                    {
+                        'species_index': int(species_index),
+                        'label': label,
+                        'orbital': int(orbital),
+                        'u': float(u),
+                        'j': float(j),
+                    }
+                )
+            return {
+                'double_counting_correction': double_counting,
+                'parameters': parameters,
+            }
+
         self._quantities = [
             Quantity(
                 'program_version',
@@ -975,6 +1003,13 @@ class ExcitingInfoParser(TextParser):
             Quantity(
                 'dft_d2_dispersion',
                 r'(DFT-D2 dispersion correction)',
+                repeats=False,
+                convert=False,
+            ),
+            Quantity(
+                'hubbard_parameters',
+                r'(LDA\+U calculation[\s\S]+?)(?:\n\s*\n)',
+                str_operation=str_to_hubbard_parameters,
                 repeats=False,
                 convert=False,
             ),
@@ -2804,6 +2839,35 @@ class ExcitingParser(BeyondDFTWorkflowsParser):
             if self.info_parser.get('dft_d2_dispersion') is not None
             else ''
         )
+
+        hubbard_parameters = self.info_parser.get('hubbard_parameters')
+        if hubbard_parameters is not None:
+            sec_electronic.method = 'DFT+U'
+            orbital_labels = {0: 's', 1: 'p', 2: 'd', 3: 'f'}
+            for parameters in hubbard_parameters.get('parameters', []):
+                if parameters['u'] == 0.0 and parameters['j'] == 0.0:
+                    continue
+                atom_parameters = next(
+                    (
+                        section
+                        for section in sec_method.atom_parameters
+                        if section.label == parameters['label']
+                    ),
+                    None,
+                )
+                if atom_parameters is None:
+                    atom_parameters = AtomParameters(label=parameters['label'])
+                    sec_method.atom_parameters.append(atom_parameters)
+                atom_parameters.hubbard_kanamori_model = HubbardKanamoriModel(
+                    orbital=orbital_labels.get(
+                        parameters['orbital'], str(parameters['orbital'])
+                    ),
+                    u=parameters['u'] * ureg.hartree,
+                    j=parameters['j'] * ureg.hartree,
+                    double_counting_correction=hubbard_parameters[
+                        'double_counting_correction'
+                    ],
+                )
 
         smearing_kind_map = {
             'Gaussian': 'gaussian',
