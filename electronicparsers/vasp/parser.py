@@ -258,6 +258,74 @@ def _get_vdw_method(incar):
     return '+'.join(methods)
 
 
+def _xc_setting_tokens(value):
+    """Return active VASP XC-setting tokens, excluding printed defaults."""
+    if value is None or value is False:
+        return []
+    if isinstance(value, (list, tuple, np.ndarray)):
+        tokens = []
+        for item in value:
+            tokens.extend(_xc_setting_tokens(item))
+        return tokens
+
+    value = str(value).strip()
+    if value.upper() in {'', '--', 'F', 'FALSE', '.FALSE.', 'NONE'}:
+        return []
+    return value.replace(',', ' ').split()
+
+
+def _pseudopotential_xc_key(pseudopotential=None, title=None):
+    """Infer a VASP POTCAR XC-family key from executed header evidence.
+
+    ``LEXCH`` is authoritative when available.  The title fallback follows the
+    documented VASP naming convention: ``PAW_PBE`` denotes PBE,
+    ``PAW_GGA`` denotes PW91, and a bare ``PAW`` title denotes LDA.  Bare
+    legacy ultrasoft titles remain unknown because they may omit the family.
+    """
+    pseudopotential = pseudopotential or {}
+    lexch = pseudopotential.get('lexch')
+    lexch_tokens = _xc_setting_tokens(lexch)
+    if lexch_tokens:
+        return lexch_tokens[0].upper()
+
+    title = title if title is not None else pseudopotential.get('title')
+    title_tokens = _xc_setting_tokens(title)
+    if not title_tokens:
+        return None
+    family = title_tokens[0].lstrip('^').upper()
+    if family == 'PAW' or family.endswith('_LDA'):
+        return 'CA'
+    if family.endswith('_PBE'):
+        return 'PE'
+    if family.endswith('_GGA'):
+        return '91'
+    return None
+
+
+def _resolve_vasp_xc_functionals(incar, pseudopotential_xc, mapping):
+    """Resolve semilocal XC names using VASP's effective precedence.
+
+    XC overrides METAGGA, which overrides an explicit GGA.  If none is active,
+    the unmodified POTCAR ``LEXCH`` family supplies the default.  Unknown or
+    conflicting evidence deliberately produces no normalized functional.
+    """
+    xc_tokens = _xc_setting_tokens(incar.get('XC'))
+    if xc_tokens:
+        functionals = []
+        for token in xc_tokens:
+            functionals.extend(mapping.get(token.upper(), [token.upper()]))
+        return functionals
+
+    metagga = _xc_setting_tokens(incar.get('METAGGA'))
+    if metagga:
+        key = metagga[0].upper()
+        return mapping.get(key, [key])
+
+    gga = _xc_setting_tokens(incar.get('GGA'))
+    key = gga[0].upper() if gga else pseudopotential_xc
+    return mapping.get(key, []) if key else []
+
+
 class PotParser(TextParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -266,6 +334,7 @@ class PotParser(TextParser):
         """Extract pseudopotential headers both from POTCAR or OUTCAR."""
         _pseudopotential = [
             Quantity('title', r'TITEL\s+=\s*(.*)'),  # extract the VASP native title
+            Quantity('lexch', r'LEXCH\s+=\s*([A-Z0-9-]+)', repeats=False),
             Quantity(
                 'flag', r'(L[A-Z]+)\s+=\s+(T|F)', repeats=True
             ),  # extract booleans keywords
@@ -312,10 +381,9 @@ class ContentParser:
         }
 
         # TODO 2. it appears that there is no
-        # single parameter for hybrid functionals so it is difficult to determine, 3. not
-        # sure about --, I thought it is lda exchange only.
+        # single parameter for hybrid functionals so it is difficult to determine.
         self.xc_functional_mapping = {
-            '--': ['GGA_X_PBE', 'GGA_C_PBE'],
+            'CA': ['LDA_X', 'LDA_C_PZ'],
             'HL': ['LDA_C_HL'],
             'WI': ['LDA_C_WIGNER'],
             'PZ': ['LDA_C_PZ'],
@@ -457,6 +525,7 @@ class ContentParser:
         pps_out = []
         for pp in pps:
             pps_out.append({'title': pp['title']})
+            pps_out[-1]['lexch'] = pp.get('lexch')
             pps_out[-1]['flag'] = _to_dict(
                 pp['flag'], transform=lambda x: bool_mapping[x]
             )
@@ -1956,6 +2025,8 @@ class VASPParser:
         element = atomtypes.get('element', [])
         atom_counts = {e: 0 for e in element}
         pseudopotentials = self.parser.get_pseudopotential()
+        atomtype_pseudopotentials = atomtypes.get('pseudopotential', [])
+        pseudopotential_xc_keys = []
         for i in range(len(element)):
             sec_method_atom_kind = AtomParameters()
             sec_method.atom_parameters.append(sec_method_atom_kind)
@@ -1967,34 +2038,49 @@ class VASPParser:
                 else element[i]
             )
             sec_method_atom_kind.label = str(atom_label)
-            if pseudopotentials:
-                try:
-                    pseudopotential = pseudopotentials[i]
-                except IndexError:
-                    self.logger.error(
-                        f'Pseudopotential not found for atom {element[i]}'
-                    )
+
+            pseudopotential = (
+                pseudopotentials[i] if i < len(pseudopotentials) else None
+            )
+            atomtype_title = (
+                atomtype_pseudopotentials[i]
+                if i < len(atomtype_pseudopotentials)
+                else None
+            )
+            title = (
+                pseudopotential.get('title')
+                if pseudopotential is not None
+                else atomtype_title
+            )
+            pseudopotential_xc_key = _pseudopotential_xc_key(
+                pseudopotential, title
+            )
+            pseudopotential_xc_keys.append(pseudopotential_xc_key)
+
+            if pseudopotential is not None:
                 sec_method_atom_kind.mass = (
                     pseudopotential['number']['POMASS'] * ureg.amu
                 )
                 sec_method_atom_kind.n_valence_electrons = pseudopotential['number'][
                     'ZVAL'
                 ]
-                pp = Pseudopotential()
-                pp.type = 'PAW'
-                if pseudopotential['flag']['LULTRA']:
+            title_tokens = _xc_setting_tokens(title)
+            if title_tokens:
+                pp = Pseudopotential(name=' '.join(title_tokens))
+                family = title_tokens[0].lstrip('^').upper()
+                if family.startswith('PAW'):
+                    pp.type = 'PAW'
+                elif family.startswith('US'):
                     pp.type = 'US V'  # TODO check if this is correct
-                pp.cutoff = pseudopotential['number']['ENMAX'] * ureg.eV
-                try:
-                    pp.xc_functional_name = self.parser.xc_functional_mapping.get(
-                        pseudopotential['title'][0].split('_')[1],
-                        ['GGA_X_PBE', 'GGA_C_PBE'],
-                    )
-                except IndexError:
-                    self.logger.warning(
-                        f'Could not extract xc functional from pseudopotential for {element[i]}'
-                    )
-                pp.name = ' '.join(pseudopotential['title'])
+                if pseudopotential is not None:
+                    if pseudopotential.get('flag', {}).get('LULTRA', False):
+                        pp.type = 'US V'
+                    pp.cutoff = pseudopotential['number']['ENMAX'] * ureg.eV
+                pseudopotential_xc_names = self.parser.xc_functional_mapping.get(
+                    pseudopotential_xc_key, []
+                )
+                if pseudopotential_xc_names:
+                    pp.xc_functional_name = pseudopotential_xc_names
                 sec_method_atom_kind.pseudopotential = pp
 
             if hubbard_present:
@@ -2011,6 +2097,14 @@ class VASPParser:
                     sec_hubb.x_vasp_projection_type = 'on-site'
             atom_counts[element[i]] += 1
 
+        pseudopotential_xc = None
+        if (
+            pseudopotential_xc_keys
+            and all(key is not None for key in pseudopotential_xc_keys)
+            and len(set(pseudopotential_xc_keys)) == 1
+        ):
+            pseudopotential_xc = pseudopotential_xc_keys[0]
+
         sec_method.electrons_representation = [
             BasisSetContainer(
                 type='plane waves',
@@ -2023,7 +2117,8 @@ class VASPParser:
         sec_xc_functional = XCFunctional()
         sec_dft.xc_functional = sec_xc_functional
         if self.parser.incar.get('LHFCALC', False):
-            gga = self.parser.incar.get('GGA', 'PE')
+            gga_tokens = _xc_setting_tokens(self.parser.incar.get('GGA'))
+            gga = gga_tokens[0].upper() if gga_tokens else pseudopotential_xc
             aexx = self.parser.incar.get('AEXX', 0.0)
             aggax = self.parser.incar.get('AGGAX', 1.0)
             aggac = self.parser.incar.get('AGGAC', 1.0)
@@ -2055,15 +2150,11 @@ class VASPParser:
                 )
 
         else:
-            metagga = self.parser.incar.get('METAGGA')
-            if metagga:
-                xc_functionals = self.parser.xc_functional_mapping.get(
-                    metagga, [metagga]
-                )
-            else:
-                xc_functionals = self.parser.xc_functional_mapping.get(
-                    self.parser.incar.get('GGA'), []
-                )
+            xc_functionals = _resolve_vasp_xc_functionals(
+                self.parser.incar,
+                pseudopotential_xc,
+                self.parser.xc_functional_mapping,
+            )
             for xc_functional in xc_functionals:
                 if '_X_' in xc_functional or xc_functional.endswith('_X'):
                     sec_xc_functional.exchange.append(Functional(name=xc_functional))

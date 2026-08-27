@@ -23,7 +23,14 @@ import os
 from nomad.units import ureg
 from nomad.datamodel import EntryArchive
 from electronicparsers.vasp import VASPParser
-from electronicparsers.vasp.parser import _get_vdw_method, _infer_uniform_k_mesh
+from electronicparsers.vasp.parser import (
+    ContentParser,
+    OutcarContentParser,
+    _get_vdw_method,
+    _infer_uniform_k_mesh,
+    _pseudopotential_xc_key,
+    _resolve_vasp_xc_functionals,
+)
 from tests.dos_integrator import integrate_dos
 
 
@@ -74,7 +81,10 @@ def test_vasprunxml_static(parser):
     assert len(sec_method.x_vasp_incar_out) == 112
     assert sec_method.x_vasp_incar_in['LCHARG']
     assert sec_method.electronic.n_spin_channels == 1
-    assert len(sec_method.dft.xc_functional.exchange) == 1
+    # The legacy ``US Mg`` title carries no LEXCH/family evidence.  An unset
+    # GGA must remain unknown rather than being silently labelled PBE.
+    assert len(sec_method.dft.xc_functional.exchange) == 0
+    assert len(sec_method.dft.xc_functional.correlation) == 0
 
     # basis set
     sec_representation = sec_method.electrons_representation[0]
@@ -461,6 +471,70 @@ def test_potcar(parser, filename, name, cutoff):
     if 'AlN' in filename:
         assert archive.run[0].program.version == '5.4.4 18Apr17-6-g9f103f2a35 complex parallel LINUX'
         assert archive.run[0].program.compilation_datetime.magnitude == 1553622472.0
+
+
+def test_outcar_potcar_lexch():
+    content = OutcarContentParser()
+    content.init_parser('tests/data/vasp/oasis_outcar_mesh/OUTCAR', None)
+    assert content.get_pseudopotential()[0]['lexch'] == 'PE'
+
+
+@pytest.mark.parametrize(
+    'incar, pseudopotential, expected',
+    [
+        (
+            {'GGA': '--'},
+            {'lexch': 'PE', 'title': ['PAW_PBE', 'Si', '05Jan2001']},
+            ['GGA_X_PBE', 'GGA_C_PBE'],
+        ),
+        (
+            {'GGA': '--'},
+            {'lexch': 'CA', 'title': ['PAW', 'Si', '02Apr1999']},
+            ['LDA_X', 'LDA_C_PZ'],
+        ),
+        (
+            {'GGA': '--'},
+            {'lexch': '91', 'title': ['PAW_GGA', 'Si', '05Jan2001']},
+            ['GGA_X_PW91', 'GGA_C_PW91'],
+        ),
+        (
+            {'GGA': 'PE'},
+            {'lexch': 'CA', 'title': ['PAW', 'Si', '02Apr1999']},
+            ['GGA_X_PBE', 'GGA_C_PBE'],
+        ),
+        (
+            {'METAGGA': 'HLE17', 'GGA': 'PE'},
+            {'lexch': 'CA'},
+            ['MGGA_XC_HLE17'],
+        ),
+        (
+            {'XC': 'PS', 'METAGGA': 'HLE17', 'GGA': 'PE'},
+            {'lexch': 'CA'},
+            ['GGA_C_PBE_SOL', 'GGA_X_PBE_SOL'],
+        ),
+        ({'GGA': '--'}, {'title': ['US', 'Si']}, []),
+    ],
+)
+def test_vasp_xc_precedence(incar, pseudopotential, expected):
+    mapping = ContentParser().xc_functional_mapping
+    pseudopotential_xc = _pseudopotential_xc_key(pseudopotential)
+    assert (
+        _resolve_vasp_xc_functionals(incar, pseudopotential_xc, mapping)
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    'title, expected',
+    [
+        (['PAW_PBE', 'Si', '05Jan2001'], 'PE'),
+        (['PAW_GGA', 'Si', '05Jan2001'], '91'),
+        (['PAW', 'Si', '02Apr1999'], 'CA'),
+        (['US', 'Si'], None),
+    ],
+)
+def test_vasp_potcar_title_xc_fallback(title, expected):
+    assert _pseudopotential_xc_key(title=title) == expected
 
 
 def test_broken_xml(parser):
