@@ -16,8 +16,10 @@
 # limitations under the License.
 #
 
-import pytest
+from pathlib import Path
+
 import numpy as np
+import pytest
 
 from nomad.datamodel import EntryArchive
 from electronicparsers.fhiaims import FHIAimsParser
@@ -54,6 +56,7 @@ def test_scf_spinpol(parser):
     archive = EntryArchive()
     parser.parse('tests/data/fhiaims/Fe_scf_spinpol/out.out', archive, None)
 
+    assert archive.run[0].clean_end
     assert archive.run[0].program.version == '151211'
     assert archive.run[0].time_run.wall_start.magnitude == approx(2.23485023e08)
 
@@ -100,6 +103,26 @@ def test_scf_spinpol(parser):
     assert np.shape(sec_eig.occupations[1][3]) == (19,)
     assert sec_eig.energies[1][2][4].magnitude == approx(-1.1221523e-16)
     assert sec_eig.occupations[0][3][9] == 1.0
+
+
+def test_clean_end_uses_controlled_timing_footer(parser, tmp_path):
+    source = Path('tests/data/fhiaims/Fe_scf_spinpol/out.out').read_text()
+
+    controlled_nonconvergence = tmp_path / 'controlled_nonconvergence.out'
+    controlled_nonconvergence.write_text(
+        source.replace(
+            'Have a nice day.', '*** scf_solver: SCF cycle not converged.'
+        )
+    )
+    archive = EntryArchive()
+    parser.parse(str(controlled_nonconvergence), archive, None)
+    assert archive.run[0].clean_end
+
+    truncated = tmp_path / 'truncated.out'
+    truncated.write_text(source.split('Leaving FHI-aims.', maxsplit=1)[0])
+    archive = EntryArchive()
+    parser.parse(str(truncated), archive, None)
+    assert archive.run[0].clean_end is False
 
 
 def test_geomopt(parser):

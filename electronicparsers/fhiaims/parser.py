@@ -2567,6 +2567,10 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
             cpu1_start=self.out_parser.get('cpu1_start', 0),
             wall_start=self.out_parser.get('wall_start', 0),
         )
+        # A complete timing section proves that FHI-aims reached its controlled
+        # shutdown path.  This remains true when the SCF iteration limit was
+        # reached; convergence is recorded separately on the calculation.
+        sec_run.clean_end = self.out_parser.timing is not None
 
         section_run_keys = [
             'x_fhi_aims_program_compilation_date',
