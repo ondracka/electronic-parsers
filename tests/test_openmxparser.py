@@ -80,8 +80,16 @@ def test_HfO2(parser):
     assert method.dft.xc_functional.correlation[0].name == 'GGA_C_PBE'
     assert method.dft.xc_functional.exchange[0].name == 'GGA_X_PBE'
     assert (method.k_mesh.grid == [10, 10, 10]).all()
-    assert np.allclose(method.k_mesh.points[0], np.array([-0.45000, -0.45000, -0.45000]).astype(complex), rtol=0.0)
-    assert np.allclose(method.k_mesh.points[499], np.array([-0.05000, 0.45000, 0.45000]).astype(complex), rtol=0.0)
+    assert np.allclose(
+        method.k_mesh.points[0],
+        np.array([-0.45000, -0.45000, -0.45000]).astype(complex),
+        rtol=0.0,
+    )
+    assert np.allclose(
+        method.k_mesh.points[499],
+        np.array([-0.05000, 0.45000, 0.45000]).astype(complex),
+        rtol=0.0,
+    )
     assert method.k_mesh.multiplicities[0] == approx(2.0)
     assert method.k_mesh.multiplicities[0] == approx(2.0)
 
@@ -143,9 +151,19 @@ def test_AlN(parser):
     assert method.scf.n_max_iteration == 100
     assert method.scf.threshold_energy_change.magnitude == approx(Ha_to_J(1e-7))
     assert (method.k_mesh.grid == [7, 7, 3]).all()
-    assert np.allclose(method.k_mesh.points[0], np.array([ -0.42857, -0.42857, -0.33333]).astype(complex), rtol=0.0)
-    assert np.allclose(method.k_mesh.points[73], np.array([0.00000, -0.00000, 0.00000]).astype(complex), rtol=0.0)
-    assert np.allclose(method.k_mesh.multiplicities[0], np.array([2, 2, 2]).astype(complex), rtol=0.0)
+    assert np.allclose(
+        method.k_mesh.points[0],
+        np.array([-0.42857, -0.42857, -0.33333]).astype(complex),
+        rtol=0.0,
+    )
+    assert np.allclose(
+        method.k_mesh.points[73],
+        np.array([0.00000, -0.00000, 0.00000]).astype(complex),
+        rtol=0.0,
+    )
+    assert np.allclose(
+        method.k_mesh.multiplicities[0], np.array([2, 2, 2]).astype(complex), rtol=0.0
+    )
     assert method.k_mesh.multiplicities[73] == [1]
 
     workflow = archive.workflow2
@@ -297,6 +315,16 @@ def test_CrO2(parser):
     method = run.method[0]
     assert method.electronic.n_spin_channels == 2
     assert method.electronic.method == 'DFT+U'
+    hubbard = next(
+        parameters.hubbard_kanamori_model
+        for parameters in method.atom_parameters
+        if parameters.label == 'Cr' and parameters.hubbard_kanamori_model is not None
+    )
+    assert hubbard.orbital == '1d'
+    assert hubbard.u_effective.magnitude == approx(
+        (5 * units.eV).to_base_units().magnitude
+    )
+    assert hubbard.double_counting_correction == 'Dudarev'
     assert method.electronic.smearing.width == approx(K_to_J(500))
     assert method.electronic.van_der_waals_method == ''
     assert method.dft.xc_functional.exchange[0].name == 'LDA_X'

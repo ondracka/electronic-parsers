@@ -44,6 +44,7 @@ from runschema.system import AtomsGroup, System, Atoms
 from runschema.method import (
     AtomParameters,
     Method,
+    HubbardKanamoriModel,
     BasisSet,
     DFT,
     Pseudopotential,
@@ -164,6 +165,25 @@ def convert_eigenvalues(string):
     return values
 
 
+def parse_hubbard_values(string):
+    """Parse an OpenMX Hubbard parameter block keyed by species and orbital."""
+    values = {}
+    for line in string.splitlines():
+        fields = line.split()
+        if len(fields) < 3:
+            continue
+
+        species = fields[0]
+        species_values = {}
+        for orbital, value in zip(fields[1::2], fields[2::2]):
+            try:
+                species_values[orbital] = float(value)
+            except ValueError:
+                continue
+        values[species] = species_values
+    return values
+
+
 eigenvalues_parser = TextParser(
     quantities=[
         Quantity(
@@ -242,6 +262,28 @@ mainfile_parser = TextParser(
             repeats=False,
         ),
         Quantity('scf.Hubbard.U', r'(?i:scf.Hubbard.U\s+(on|off))', repeats=False),
+        Quantity(
+            'Hubbard.U.values',
+            r'(?is:<Hubbard\.U\.values\s+(.+?)\s+Hubbard\.U\.values>)',
+            str_operation=parse_hubbard_values,
+            repeats=False,
+        ),
+        Quantity(
+            'Hund.J.values',
+            r'(?is:<Hund\.J\.values\s+(.+?)\s+Hund\.J\.values>)',
+            str_operation=parse_hubbard_values,
+            repeats=False,
+        ),
+        Quantity(
+            'scf.DFTU.Type',
+            r'(?i:scf\.DFTU\.Type\s*:?\s*(\d+))',
+            repeats=False,
+        ),
+        Quantity(
+            'scf.dc.Type',
+            r'(?i:scf\.dc\.Type\s*:?\s*(\S+))',
+            repeats=False,
+        ),
         Quantity('MD.maxIter', r'MD\.maxIter\s+(\d+)', repeats=False),
         Quantity('MD.Type', r'(?i:MD\.Type\s+([a-z_\d]{3,6}))', repeats=False),
         Quantity('MD.TimeStep', r'MD\.TimeStep\s+([\d\.e-]+)', repeats=False),
@@ -390,7 +432,10 @@ def parse_structure(system, logger: logging.Logger):
                 # doesn't work.
                 atom_positions = (
                     np.array(
-                        [np.array(pos).dot(lattice_vectors.magnitude) for pos in atom_positions]
+                        [
+                            np.array(pos).dot(lattice_vectors.magnitude)
+                            for pos in atom_positions
+                        ]
                     )
                     * lattice_units
                 )
@@ -666,11 +711,46 @@ class OpenmxParser:
         sec_method.dft = sec_dft
         sec_method.electronic = sec_electronic
         sec_electronic.method = 'DFT'
-        # FIXME: add some testcase for DFT+U
         scf_hubbard_u = mainfile_parser.get('scf.Hubbard.U')
         if scf_hubbard_u is not None:
             if scf_hubbard_u.lower() == 'on':
                 sec_electronic.method = 'DFT+U'
+
+                # Type 1 is OpenMX's default simplified (Dudarev) scheme, for
+                # which Hubbard.U.values contains U_eff. Type 2 stores U and J
+                # separately in Hubbard.U.values and Hund.J.values.
+                dftu_type = mainfile_parser.get('scf.DFTU.Type') or 1
+                u_values = mainfile_parser.get('Hubbard.U.values') or {}
+                j_values = mainfile_parser.get('Hund.J.values') or {}
+                dc_type = mainfile_parser.get('scf.dc.Type')
+                atom_parameters_by_label = {
+                    parameters.label: parameters
+                    for parameters in sec_method.atom_parameters
+                }
+
+                for label, orbitals in u_values.items():
+                    first_model = True
+                    for orbital, u_value in orbitals.items():
+                        j_value = j_values.get(label, {}).get(orbital, 0.0)
+                        if u_value == 0.0 and j_value == 0.0:
+                            continue
+
+                        if first_model and label in atom_parameters_by_label:
+                            atom_parameters = atom_parameters_by_label[label]
+                            first_model = False
+                        else:
+                            atom_parameters = AtomParameters(label=label)
+                            sec_method.atom_parameters.append(atom_parameters)
+
+                        hubbard = HubbardKanamoriModel(orbital=orbital)
+                        atom_parameters.hubbard_kanamori_model = hubbard
+                        if dftu_type == 1:
+                            hubbard.u_effective = u_value * units.eV
+                            hubbard.double_counting_correction = 'Dudarev'
+                        else:
+                            hubbard.u = u_value * units.eV
+                            hubbard.j = j_value * units.eV
+                            hubbard.double_counting_correction = dc_type or 'sFLL'
 
         scf_xctype = mainfile_parser.get('scf.XcType')
         sec_xc_functional = XCFunctional()
