@@ -87,6 +87,7 @@ from ..utils import BeyondDFTWorkflowsParser
 
 
 re_float = r'[-+]?\d+\.?\d*(?:[Ee][-+]\d+)?'
+re_float_leading_decimal = rf'(?:{re_float}|[-+]?\.\d+(?:[Ee][-+]\d+)?)'
 re_n = r'[\n\r]'
 
 
@@ -568,6 +569,13 @@ class FHIAimsOutParser(TextParser):
                 ),
             ),
             Quantity(
+                'scf_energy_change',
+                rf'\| Change of total energy\s*:\s*({re_float_leading_decimal})\s*eV',
+                repeats=True,
+                dtype=float,
+                unit='eV',
+            ),
+            Quantity(
                 'structure',
                 rf'Atomic structure(.|\n)*\| *Atom *x \[A\] *y \[A\] *z \[A\]([\s\S]+?Species[\s\S]+?(?:{re_n} *{re_n}| 1\: ))',
                 repeats=False,
@@ -1019,6 +1027,13 @@ class FHIAimsOutParser(TextParser):
                 repeats=False,
                 convert=False,
                 sub_parser=TextParser(quantities=structure_quantities),
+            ),
+            Quantity(
+                'scf_energy_change',
+                rf'\| Change of total energy\s*:\s*({re_float_leading_decimal})\s*eV',
+                repeats=True,
+                dtype=float,
+                unit='eV',
             ),
             Quantity(
                 'lattice_vectors_reciprocal',
@@ -1901,6 +1916,20 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
             for scf_iteration in scf_iterations:
                 parse_scf(scf_iteration)
 
+            # Some old outputs contain both compact ``SCF n:`` summaries and
+            # verbose iteration blocks under the same calculation. The legacy
+            # TextParser quantity collision keeps the compact sections, which
+            # do not contain the final convergence block. Preserve the normal
+            # per-iteration value when available and otherwise recover the last
+            # executed energy change directly from this calculation section.
+            energy_changes = section.get('scf_energy_change', [])
+            if energy_changes is not None and len(energy_changes) and scf_iterations:
+                sec_last_scf = sec_scc.scf_iteration[-1]
+                if sec_last_scf.energy is None:
+                    sec_last_scf.energy = Energy()
+                if sec_last_scf.energy.change is None:
+                    sec_last_scf.energy.change = energy_changes[-1]
+
             sec_scc.calculation_converged = section.get('converged') == 'converged'
             # how about geometry optimization convergence
 
@@ -1984,6 +2013,17 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
 
         if not sec_run.calculation:
             return
+
+        # A few old single-point outputs print their final convergence block
+        # after the force-evaluation marker that terminates ``full_scf``. For
+        # a single-calculation run the final file-level value is unambiguous.
+        if len(sec_run.calculation) == 1 and sec_run.calculation[0].scf_iteration:
+            energy_changes = self.out_parser.get('scf_energy_change', [])
+            if energy_changes is not None and len(energy_changes):
+                sec_last_scf = sec_run.calculation[0].scf_iteration[-1]
+                if sec_last_scf.energy is None:
+                    sec_last_scf.energy = Energy()
+                sec_last_scf.energy.change = energy_changes[-1]
 
         sec_scc = sec_run.calculation[-1]
         timing = self.out_parser.timing

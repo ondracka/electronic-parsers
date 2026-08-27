@@ -156,6 +156,41 @@ def test_clean_end_uses_controlled_timing_footer(parser, tmp_path):
     assert archive.run[0].clean_end is False
 
 
+def test_old_compact_scf_recovers_observed_energy_change(parser, tmp_path):
+    source = Path('tests/data/fhiaims/Fe_scf_spinpol/out.out').read_text()
+    source = source.replace(
+        'Begin self-consistency loop: Initialization',
+        'Begin self-consistency loop: Initialization\n'
+        '  SCF    1 : 0.0 | 0.0 | 0.0 | 0.0',
+    ).replace('Begin self-consistency iteration', 'Verbose SCF iteration')
+    mainfile = tmp_path / 'old_compact_scf.out'
+    mainfile.write_text(source)
+
+    archive = EntryArchive()
+    parser.parse(str(mainfile), archive, None)
+
+    scf_iterations = archive.run[0].calculation[0].scf_iteration
+    assert len(scf_iterations) == 1
+    assert scf_iterations[-1].energy.change.to('eV').magnitude == approx(1.519e-6)
+
+
+def test_old_scf_recovers_terminal_energy_change_after_section(parser, tmp_path):
+    source = Path('tests/data/fhiaims/Fe_scf_spinpol/out.out').read_text()
+    marker = '  Final output of selected total energy values:'
+    source = source.replace(
+        marker,
+        f'{marker}\n  | Change of total energy        : -.9157E-09 eV',
+    )
+    mainfile = tmp_path / 'old_terminal_scf.out'
+    mainfile.write_text(source)
+
+    archive = EntryArchive()
+    parser.parse(str(mainfile), archive, None)
+
+    energy_change = archive.run[0].calculation[0].scf_iteration[-1].energy.change
+    assert energy_change.to('eV').magnitude == approx(-9.157e-10)
+
+
 def test_geomopt(parser):
     archive = EntryArchive()
     parser.parse('tests/data/fhiaims/Si_geomopt/out.out', archive, None)
