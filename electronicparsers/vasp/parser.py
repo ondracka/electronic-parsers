@@ -218,6 +218,46 @@ def _infer_uniform_k_mesh(points, multiplicities, tolerance=1e-4):
     return list(grid), sampling_method
 
 
+_ivdw_methods = {
+    1: 'DFT-D2',
+    2: 'TS',
+    3: 'DFT-ulg',
+    4: 'dDsC',
+    10: 'DFT-D2',
+    11: 'DFT-D3(0)',
+    12: 'DFT-D3(BJ)',
+    13: 'DFT-D4',
+    14: 'libMBD',
+    15: 'simple-DFT-D3',
+    20: 'TS',
+    21: 'TS-IH',
+    202: 'MBD@rsSCS',
+    263: 'MBD@rSC/FI',
+}
+
+
+def _get_vdw_method(incar):
+    """Return the executed VASP dispersion method, or ``''`` when inactive."""
+    methods = []
+    ivdw = incar.get('IVDW')
+    try:
+        ivdw = int(ivdw) if ivdw is not None else None
+    except (TypeError, ValueError):
+        ivdw = None
+
+    if ivdw not in (None, 0):
+        methods.append(_ivdw_methods.get(ivdw, f'VASP IVDW={ivdw}'))
+    elif ivdw is None and incar.get('LVDW', False):
+        # LVDW is the obsolete switch for DFT-D2. VASP maps it to IVDW=1.
+        methods.append('DFT-D2')
+
+    if incar.get('LUSE_VDW', False):
+        # NOMAD uses XC for a nonlocal vdW functional represented by the XC section.
+        methods.append('XC')
+
+    return '+'.join(methods)
+
+
 class PotParser(TextParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -666,6 +706,11 @@ class OutcarTextParser(TextParser):
                 repeats=False,
                 convert=False,
             ),
+            # IVDW is printed in the executed dispersion section but, unlike most
+            # INCAR settings, is not necessarily present in Startparameter.
+            Quantity(
+                'ivdw', r'\n\s*IVDW\s*=\s*(\d+)', dtype=int, repeats=False
+            ),
             Quantity(
                 'ions_per_type', r'ions per type =\s*([ \d]+)', dtype=int, repeats=False
             ),
@@ -787,6 +832,9 @@ class OutcarContentParser(ContentParser):
             self._incar = dict(incar=None, incar_out=None)
 
         incar = self.parser.get('parameters', {})
+        ivdw = self.parser.get('ivdw')
+        if ivdw is not None:
+            incar['IVDW'] = ivdw
         self._incar['incar_out'] = incar
         self._fix_incar(incar)
         return incar
@@ -1871,6 +1919,9 @@ class VASPParser:
 
         # input/output incar
         self.parse_incarsinout()
+        sec_method.electronic.van_der_waals_method = _get_vdw_method(
+            self.parser.incar
+        )
         # kpoints
         self.parse_kpoints(sec_method)
 

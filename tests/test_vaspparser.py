@@ -23,7 +23,7 @@ import os
 from nomad.units import ureg
 from nomad.datamodel import EntryArchive
 from electronicparsers.vasp import VASPParser
-from electronicparsers.vasp.parser import _infer_uniform_k_mesh
+from electronicparsers.vasp.parser import _get_vdw_method, _infer_uniform_k_mesh
 from tests.dos_integrator import integrate_dos
 
 
@@ -366,6 +366,38 @@ def test_outcar_oasis_uniform_mesh(parser):
     assert sum(k_mesh.multiplicities) == approx(2744)
     assert list(k_mesh.grid) == [14, 14, 14]
     assert k_mesh.sampling_method == 'Gamma-centered'
+    assert archive.run[0].method[0].electronic.van_der_waals_method == ''
+
+
+def test_outcar_oasis_vdw_d3bj(parser):
+    """Parse executed D3(BJ) from local-Oasis entry TDCnNy8J9EZ8i9xBun0SFBswwjoR."""
+    path = 'tests/data/vasp/oasis_vdw_d3bj/OUTCAR'
+    assert not os.path.exists(os.path.join(os.path.dirname(path), 'INCAR'))
+
+    archive = EntryArchive()
+    parser.parse(path, archive, None)
+
+    method = archive.run[0].method[0]
+    assert method.x_vasp_incar_out['IVDW'] == 12
+    assert method.electronic.van_der_waals_method == 'DFT-D3(BJ)'
+
+
+@pytest.mark.parametrize(
+    'incar, expected',
+    [
+        ({}, ''),
+        ({'IVDW': 0}, ''),
+        ({'LVDW': True}, 'DFT-D2'),
+        ({'IVDW': 11}, 'DFT-D3(0)'),
+        ({'IVDW': 20}, 'TS'),
+        ({'IVDW': 202}, 'MBD@rsSCS'),
+        ({'LUSE_VDW': True}, 'XC'),
+        ({'IVDW': 12, 'LUSE_VDW': True}, 'DFT-D3(BJ)+XC'),
+        ({'IVDW': 999}, 'VASP IVDW=999'),
+    ],
+)
+def test_get_vdw_method(incar, expected):
+    assert _get_vdw_method(incar) == expected
 
 
 def test_infer_even_monkhorst_pack_mesh():
