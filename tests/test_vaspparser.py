@@ -23,6 +23,7 @@ import os
 from nomad.units import ureg
 from nomad.datamodel import EntryArchive
 from electronicparsers.vasp import VASPParser
+from electronicparsers.vasp.parser import _infer_uniform_k_mesh
 from tests.dos_integrator import integrate_dos
 
 
@@ -350,6 +351,32 @@ def test_outcar(parser):
 #        assert pytest.approx(dos_integrated, abs=1) == 22.
 #    except AssertionError:
 #        raise AssertionError(sec_scc.energy.fermi)
+
+
+def test_outcar_oasis_uniform_mesh(parser):
+    """Recover the executed mesh from local-Oasis entry o3oUwd1NcOxoohCv0ITRXowjhHtv."""
+    path = 'tests/data/vasp/oasis_outcar_mesh/OUTCAR'
+    assert not os.path.exists(os.path.join(os.path.dirname(path), 'KPOINTS'))
+
+    archive = EntryArchive()
+    parser.parse(path, archive, None)
+
+    k_mesh = archive.run[0].method[0].k_mesh
+    assert len(k_mesh.points) == 104
+    assert sum(k_mesh.multiplicities) == approx(2744)
+    assert list(k_mesh.grid) == [14, 14, 14]
+    assert k_mesh.sampling_method == 'Gamma-centered'
+
+
+def test_infer_even_monkhorst_pack_mesh():
+    points = np.array(
+        [[x, y, z] for x in (-0.25, 0.25) for y in (-0.25, 0.25) for z in (-0.25, 0.25)]
+    )
+    assert _infer_uniform_k_mesh(points, np.ones(8)) == (
+        [2, 2, 2],
+        'Monkhorst-Pack',
+    )
+
 
 def test_outcar_gamma(parser):
     archive = EntryArchive()

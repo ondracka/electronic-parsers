@@ -33,6 +33,7 @@ from typing import List, Any, Union, Optional
 import os
 import numpy as np
 from datetime import datetime
+from math import isqrt
 import ase
 import re
 from xml.sax import ContentHandler, make_parser  # type: ignore
@@ -133,6 +134,88 @@ def convert(val, dtype):
             return dtype(val)
         except Exception:
             return val
+
+
+def _infer_uniform_k_mesh(points, multiplicities, tolerance=1e-4):
+    """Infer the executed regular mesh from an OUTCAR irreducible-point table.
+
+    For an automatically generated VASP mesh, the sum of the irreducible-point
+    multiplicities is the number of points in the full mesh. The coordinates
+    then constrain each grid dimension to either a Gamma-centred or a
+    Monkhorst-Pack lattice. Return a result only when these constraints select
+    one unique grid; incomplete or nonuniform point sets remain unclassified.
+    """
+    try:
+        points = np.asarray(points, dtype=float)
+        multiplicities = np.asarray(multiplicities, dtype=float)
+    except (TypeError, ValueError):
+        return None
+
+    if (
+        points.ndim != 2
+        or points.shape[1] != 3
+        or multiplicities.shape != (len(points),)
+        or len(points) == 0
+        or not np.all(np.isfinite(points))
+        or not np.all(np.isfinite(multiplicities))
+        or np.any(multiplicities <= 0)
+        or not np.allclose(
+            multiplicities, np.rint(multiplicities), atol=tolerance, rtol=0.0
+        )
+    ):
+        return None
+
+    total_float = float(np.sum(multiplicities))
+    total = int(round(total_float))
+    if total < 1 or not np.isclose(total_float, total, atol=tolerance, rtol=0.0):
+        return None
+
+    divisors = set()
+    for divisor in range(1, isqrt(total) + 1):
+        if total % divisor == 0:
+            divisors.add(divisor)
+            divisors.add(total // divisor)
+    divisors = sorted(divisors)
+
+    solutions = {}
+    for sampling_method in ('Gamma-centered', 'Monkhorst-Pack'):
+        axis_divisions = []
+        for axis in range(3):
+            candidates = []
+            for division in divisors:
+                # An even Monkhorst-Pack grid is shifted by half a grid step.
+                # For odd divisions it is geometrically identical to a
+                # Gamma-centred grid and therefore has zero shift.
+                shift = (
+                    0.5
+                    if sampling_method == 'Monkhorst-Pack' and division % 2 == 0
+                    else 0.0
+                )
+                scaled = points[:, axis] * division - shift
+                if np.all(np.abs(scaled - np.rint(scaled)) <= tolerance):
+                    candidates.append(division)
+            axis_divisions.append(candidates)
+
+        for first in axis_divisions[0]:
+            for second in axis_divisions[1]:
+                partial = first * second
+                if total % partial != 0:
+                    continue
+                third = total // partial
+                if third in axis_divisions[2]:
+                    grid = (first, second, third)
+                    solutions.setdefault(grid, set()).add(sampling_method)
+
+    if len(solutions) != 1:
+        return None
+
+    grid, sampling_methods = next(iter(solutions.items()))
+    # All-odd Gamma and Monkhorst-Pack grids yield the same executed points.
+    # Describe that realised geometry as Gamma-centred when both labels fit.
+    sampling_method = (
+        'Gamma-centered' if 'Gamma-centered' in sampling_methods else 'Monkhorst-Pack'
+    )
+    return list(grid), sampling_method
 
 
 class PotParser(TextParser):
@@ -598,6 +681,19 @@ class OutcarTextParser(TextParser):
                 repeats=False,
                 dtype=float,
             ),
+            Quantity(
+                'automatic_k_mesh',
+                r'(Automatic generation of k-mesh\.)',
+                repeats=False,
+                dtype=str,
+                convert=False,
+            ),
+            Quantity(
+                'n_irreducible_kpoints',
+                r'Found\s+(\d+)\s+irreducible k-points:',
+                repeats=False,
+                dtype=int,
+            ),
             Quantity('nbands', r'NBANDS\s*=\s*(\d+)', dtype=int, repeats=False),
             Quantity(
                 'lattice_vectors',
@@ -721,6 +817,18 @@ class OutcarContentParser(ContentParser):
                 k_mults = kpts_occs[3].T
                 self._kpoints_info['multiplicities'] = k_mults
                 self._kpoints_info['weights'] = k_mults / np.sum(k_mults)
+                n_irreducible = self.parser.get('n_irreducible_kpoints')
+                automatic_mesh = self.parser.get('automatic_k_mesh')
+                if automatic_mesh is not None and n_irreducible == len(
+                    self._kpoints_info['points']
+                ):
+                    uniform_mesh = _infer_uniform_k_mesh(
+                        self._kpoints_info['points'], k_mults
+                    )
+                    if uniform_mesh is not None:
+                        grid, sampling_method = uniform_mesh
+                        self._kpoints_info['grid'] = grid
+                        self._kpoints_info['sampling_method'] = sampling_method
             else:
                 # gamma VASP does not print the gamma point explicitly
                 header = self.parser.get('header')
