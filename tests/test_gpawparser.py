@@ -47,7 +47,7 @@ def test_gpw(parser):
     assert sec_method.electronic.method == 'DFT'
     sec_basis = sec_method.electrons_representation[0].basis_set[0]
     assert sec_basis.type == 'real-space grid'
-    assert sec_method.scf.threshold_energy_change.magnitude == approx(1.42196374e-24)
+    assert sec_method.scf.threshold_energy_change.magnitude == approx(8.01088317e-23)
     assert sec_method.electronic.smearing.width == 0.0
     assert sec_method.electronic.charge == 0.0
     assert sec_method.electronic.van_der_waals_method == ''
@@ -117,8 +117,10 @@ def test_gpw_oasis_forces(parser):
     archive = EntryArchive()
     parser.parse('tests/data/gpaw/Si2_oasis.gpw', archive, None)
 
-    assert archive.run[0].clean_end is None
-    electronic = archive.run[0].method[0].electronic
+    assert archive.run[0].clean_end
+    method = archive.run[0].method[0]
+    assert method.scf.threshold_energy_change.to('eV').magnitude == approx(1e-7)
+    electronic = method.electronic
     assert electronic.van_der_waals_method == ''
     assert electronic.m_to_dict()['van_der_waals_method'] == ''
 
@@ -129,6 +131,17 @@ def test_gpw_oasis_forces(parser):
     assert calculation.energy.free.value.to('eV').magnitude == approx(
         -10.791626120382862
     )
+    assert calculation.n_scf_iterations == 35
+    assert len(calculation.scf_iteration) == 35
+    assert calculation.scf_iteration[0].energy.total.value.to(
+        'eV'
+    ).magnitude == approx(-10.813263)
+    assert calculation.scf_iteration[-1].energy.total.value.to(
+        'eV'
+    ).magnitude == approx(-10.791372)
+    assert calculation.scf_iteration[-1].energy.change.to(
+        'hartree'
+    ).magnitude == approx(3.8432590443449044e-12)
 
     forces = calculation.forces.free
     assert np.shape(forces.value) == (2, 3)

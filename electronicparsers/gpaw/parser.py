@@ -44,6 +44,7 @@ from runschema.method import (
 from runschema.system import System, Atoms
 from runschema.calculation import (
     Calculation,
+    ScfIteration,
     Energy,
     EnergyEntry,
     Forces,
@@ -197,6 +198,12 @@ class GPWParser(TarParser):
 
     def get_smearing_width(self):
         return self.get_parameter('fermiwidth')
+
+    def get_scf_energy_threshold(self):
+        return self.get_parameter('energyconvergencecriterion')
+
+    def get_scf_energy_error(self):
+        return self.get_parameter('energyerror')
 
 
 class GPW2Parser(FileParser):
@@ -353,6 +360,12 @@ class GPW2Parser(FileParser):
         else:
             return self.get_parameter('occupations').get('width')
 
+    def get_scf_energy_threshold(self):
+        return self.get_parameter('energyerror')
+
+    def get_scf_energy_error(self):
+        return None
+
     def parse(self, key=None):
         pass
 
@@ -396,6 +409,35 @@ class GPAWParser:
             handle.seek(max(handle.tell() - 65536, 0))
             lines = handle.read().rstrip().splitlines()
         return bool(lines) and lines[-1].lstrip().lower().startswith(b'date:')
+
+    @staticmethod
+    def _get_scf_energies_from_log(filepath):
+        """Read the printed SCF iteration energies from a companion log."""
+        logfile = f'{os.path.splitext(filepath)[0]}.txt'
+        if not os.path.isfile(logfile):
+            return []
+
+        iterations = []
+        with open(logfile, encoding='utf-8', errors='replace') as handle:
+            for line in handle:
+                fields = line.split()
+                if len(fields) < 6 or fields[0] != 'iter:':
+                    continue
+                try:
+                    number = int(fields[1])
+                except ValueError:
+                    continue
+                values = fields[3:]
+                while values and re.fullmatch(r'\d+', values[-1]):
+                    values.pop()
+                if not values:
+                    continue
+                try:
+                    energy = float(values[-1])
+                except ValueError:
+                    continue
+                iterations.append((number, energy))
+        return iterations
 
     @staticmethod
     def _get_hubbard_models(setups, labels):
@@ -573,7 +615,7 @@ class GPAWParser:
         if charge is not None:
             sec_electronic.charge = int(charge)
 
-        threshold_energy = self.parser.get_parameter('energyerror')
+        threshold_energy = self.parser.get_scf_energy_threshold()
         sec_scf = Scf()
         sec_method.scf = sec_scf
         sec_scf.threshold_energy_change = self.apply_unit(
@@ -732,6 +774,21 @@ class GPAWParser:
         converged = self.parser.get_parameter('converged')
         if converged is not None:
             sec_scc.calculation_converged = converged
+
+        log_iterations = self._get_scf_energies_from_log(self.filepath)
+        for _, energy in log_iterations:
+            sec_scc.scf_iteration.append(
+                ScfIteration(
+                    energy=Energy(total=EnergyEntry(value=energy * ureg.eV))
+                )
+            )
+        if log_iterations:
+            sec_scc.n_scf_iterations = len(log_iterations)
+            energy_error = self.parser.get_scf_energy_error()
+            if energy_error is not None:
+                sec_scc.scf_iteration[-1].energy.change = self.apply_unit(
+                    energy_error, 'energyunit'
+                )
 
         sec_scc.system_ref = sec_run.system[-1]
         sec_scc.method_ref = sec_run.method[-1]
