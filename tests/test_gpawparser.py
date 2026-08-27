@@ -18,6 +18,7 @@
 
 from copy import copy
 from io import BytesIO
+from pathlib import Path
 import tarfile
 
 import pytest
@@ -115,6 +116,7 @@ def test_gpw_oasis_forces(parser):
     archive = EntryArchive()
     parser.parse('tests/data/gpaw/Si2_oasis.gpw', archive, None)
 
+    assert archive.run[0].clean_end is None
     electronic = archive.run[0].method[0].electronic
     assert electronic.van_der_waals_method == ''
     assert electronic.m_to_dict()['van_der_waals_method'] == ''
@@ -127,6 +129,24 @@ def test_gpw_oasis_forces(parser):
     assert forces.value_raw[1][2].to('hartree / bohr').magnitude == approx(
         -7.228014483236696e-20
     )
+
+
+@pytest.mark.parametrize(
+    'log_tail, expected',
+    [
+        ('Total: 42.812 100.0%\ndate: Sun Oct 16 08:50:58 2016\n', True),
+        ('Total: 42.812 100.0%\n', False),
+    ],
+)
+def test_clean_end_from_companion_log(parser, tmp_path, log_tail, expected):
+    source = Path('tests/data/gpaw/Si2_oasis.gpw')
+    mainfile = tmp_path / 'Si2_oasis.gpw'
+    mainfile.write_bytes(source.read_bytes())
+    mainfile.with_suffix('.txt').write_text(log_tail)
+
+    archive = EntryArchive()
+    parser.parse(str(mainfile), archive, None)
+    assert archive.run[0].clean_end is expected
 
 
 def test_gpw2(parser):

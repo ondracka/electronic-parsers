@@ -17,6 +17,7 @@
 # limitations under the License.
 #
 import ast
+import os
 import re
 
 import numpy as np
@@ -367,6 +368,18 @@ class GPAWParser:
         if isinstance(xc_functional, str) and 'vdw' in xc_functional.lower():
             return 'XC'
         return ''
+
+    @staticmethod
+    def _get_clean_end_from_log(filepath):
+        """Return GPAW process status when a same-stem text log is present."""
+        logfile = f'{os.path.splitext(filepath)[0]}.txt'
+        if not os.path.isfile(logfile):
+            return None
+        with open(logfile, 'rb') as handle:
+            handle.seek(0, os.SEEK_END)
+            handle.seek(max(handle.tell() - 65536, 0))
+            lines = handle.read().rstrip().splitlines()
+        return bool(lines) and lines[-1].lstrip().lower().startswith(b'date:')
 
     @staticmethod
     def _get_hubbard_models(setups, labels):
@@ -753,6 +766,9 @@ class GPAWParser:
         sec_run.program = Program(
             name='GPAW', version=self.parser.get_program_version()
         )
+        clean_end = self._get_clean_end_from_log(filepath)
+        if clean_end is not None:
+            sec_run.clean_end = clean_end
 
         self.parse_method()
 
