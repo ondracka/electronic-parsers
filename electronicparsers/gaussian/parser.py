@@ -52,6 +52,29 @@ from .metainfo.gaussian import (
 )
 
 
+_empirical_dispersion_methods = {
+    'NONE': '',
+    'OFF': '',
+    'GD2': 'DFT-D2',
+    'GD3': 'DFT-D3(0)',
+    'GD3ZERO': 'DFT-D3(0)',
+    'GD3BJ': 'DFT-D3(BJ)',
+    'PFD': 'PFD',
+}
+
+
+def _get_vdw_method(settings):
+    match = re.search(
+        r'\bEMPIRICALDISPERSION\s*=\s*\(?([A-Z0-9]+)\)?', settings.upper()
+    )
+    if match is None:
+        return ''
+    dispersion = match.group(1)
+    return _empirical_dispersion_methods.get(
+        dispersion, f'Gaussian EmpiricalDispersion={dispersion}'
+    )
+
+
 class GaussianOutParser(TextParser):
     def __init__(self):
         super().__init__()
@@ -1462,6 +1485,7 @@ class GaussianParser:
         sec_method.dft = sec_dft
         sec_electronic = Electronic()
         sec_method.electronic = sec_electronic
+        sec_electronic.van_der_waals_method = _get_vdw_method(settings)
         if len(methods) != 1:
             self.logger.error(
                 'Found mutiple or no method', data=dict(n_parsed=len(methods))

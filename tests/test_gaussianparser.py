@@ -18,9 +18,11 @@
 
 import pytest
 import numpy as np
+from pathlib import Path
 
 from nomad.datamodel import EntryArchive
 from electronicparsers.gaussian import GaussianParser
+from electronicparsers.gaussian.parser import _get_vdw_method
 
 
 def approx(value, abs=0, rel=1e-6):
@@ -57,6 +59,8 @@ def test_scf_spinpol(parser):
     assert len(sec_methods) == 1
     assert sec_methods[0].dft.xc_functional.hybrid[0].name == 'HYB_GGA_XC_B3LYP'
     assert sec_methods[0].electronic.charge.magnitude == -1
+    assert sec_methods[0].electronic.van_der_waals_method == ''
+    assert sec_methods[0].electronic.m_to_dict()['van_der_waals_method'] == ''
 
     sec_systems = sec_runs[0].system
     assert len(sec_systems) == 1
@@ -81,6 +85,39 @@ def test_scf_spinpol(parser):
         -1.05675722e-15
     )
     assert sec_sccs[0].calculation_converged
+
+
+@pytest.mark.parametrize(
+    'keyword, expected',
+    [
+        ('GD2', 'DFT-D2'),
+        ('GD3', 'DFT-D3(0)'),
+        ('GD3BJ', 'DFT-D3(BJ)'),
+        ('PFD', 'PFD'),
+        ('None', ''),
+    ],
+)
+def test_empirical_dispersion_mapping(keyword, expected):
+    settings = f'# PBEPBE/6-31G EmpiricalDispersion={keyword}'
+    assert _get_vdw_method(settings) == expected
+
+
+def test_empirical_dispersion_route(parser, tmp_path):
+    source = Path('tests/data/gaussian/Al_scf/Al.out').read_text()
+    source = source.replace(
+        '#B3LYP/aug-cc-pVTZ scf=verytight integral(grid=ultrafine)',
+        '#B3LYP/aug-cc-pVTZ EmpiricalDispersion=GD3BJ scf=verytight '
+        'integral(grid=ultrafine)',
+        1,
+    )
+    output = tmp_path / 'Al.out'
+    output.write_text(source)
+
+    archive = EntryArchive()
+    parser.parse(str(output), archive, None)
+    electronic = archive.run[0].method[0].electronic
+    assert electronic.van_der_waals_method == 'DFT-D3(BJ)'
+    assert electronic.m_to_dict()['van_der_waals_method'] == 'DFT-D3(BJ)'
 
 
 def test_scf_multirun(parser):
