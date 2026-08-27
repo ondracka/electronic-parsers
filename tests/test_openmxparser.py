@@ -20,6 +20,7 @@ import pytest
 import logging
 import numpy as np
 from datetime import datetime
+from pathlib import Path
 
 from nomad.datamodel import EntryArchive
 from nomad.units import ureg as units
@@ -105,6 +106,16 @@ def test_HfO2(parser):
 
     scc = run.calculation
     assert scc[-1].eigenvalues[0].kpoints_multiplicities[0] == approx(2.0)
+
+
+def test_truncated_output_sets_clean_end_false(parser, tmp_path):
+    source = Path('tests/data/openmx/AlN_ionic_optimization/AlN.out').read_text()
+    output = tmp_path / 'AlN.out'
+    output.write_text(source.split('Computational Time (second)', maxsplit=1)[0])
+
+    archive = EntryArchive()
+    parser.parse(str(output), archive, logging)
+    assert archive.run[0].clean_end is False
 
 
 def test_AlN(parser):
