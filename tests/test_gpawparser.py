@@ -16,6 +16,10 @@
 # limitations under the License.
 #
 
+from copy import copy
+from io import BytesIO
+import tarfile
+
 import pytest
 import numpy as np
 
@@ -39,6 +43,7 @@ def test_gpw(parser):
     assert archive.run[0].program.version == '1.1.0'
 
     sec_method = archive.run[0].method[0]
+    assert sec_method.electronic.method == 'DFT'
     sec_basis = sec_method.electrons_representation[0].basis_set[0]
     assert sec_basis.type == 'real-space grid'
     assert sec_method.scf.threshold_energy_change.magnitude == approx(1.42196374e-24)
@@ -65,6 +70,36 @@ def test_gpw(parser):
     assert sec_scc.eigenvalues[0].energies[0][0][1].magnitude == approx(5.54481608e-19)
     assert sec_scc.eigenvalues[0].occupations[0][0][0] == approx(2.0)
     assert sec_scc.calculation_converged
+
+
+def test_gpw_hubbard_setup(parser, tmp_path):
+    """A legacy GPAW setup string is the executed DFT+U configuration."""
+    source = 'tests/data/gpaw/Si2_oasis.gpw'
+    target = tmp_path / 'Si2_hubbard.gpw'
+    with tarfile.open(source) as input_archive, tarfile.open(target, 'w') as output_archive:
+        for member in input_archive.getmembers():
+            fileobj = input_archive.extractfile(member)
+            if fileobj is None:
+                output_archive.addfile(member)
+                continue
+            data = fileobj.read()
+            if member.name == 'info.xml':
+                data = data.replace(
+                    b"{None: 'paw'}", b"{'Si': ':p,6.0'}"
+                )
+            output_member = copy(member)
+            output_member.size = len(data)
+            output_archive.addfile(output_member, BytesIO(data))
+
+    archive = EntryArchive()
+    parser.parse(str(target), archive, None)
+
+    method = archive.run[0].method[0]
+    assert method.electronic.method == 'DFT+U'
+    hubbard = method.atom_parameters[0].hubbard_kanamori_model
+    assert hubbard.orbital == 'p'
+    assert hubbard.u_effective.to('eV').magnitude == approx(6.0)
+    assert hubbard.double_counting_correction == 'Dudarev'
 
 
 @pytest.mark.parametrize(

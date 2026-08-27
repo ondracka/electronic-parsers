@@ -16,6 +16,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import ast
+import re
+
 import numpy as np
 import logging
 import ase
@@ -33,7 +36,8 @@ from runschema.method import (
     Functional,
     BasisSet,
     BasisSetContainer,
-    Electronic,
+    AtomParameters,
+    HubbardKanamoriModel,
     Scf,
 )
 from runschema.system import System, Atoms
@@ -364,6 +368,59 @@ class GPAWParser:
             return 'XC'
         return ''
 
+    @staticmethod
+    def _get_hubbard_models(setups, labels):
+        """Return GPAW setup-based Hubbard models and whether +U was requested."""
+        if isinstance(setups, list) and all(
+            isinstance(value, str) for value in setups
+        ):
+            setups = ' '.join(setups)
+        if isinstance(setups, str):
+            try:
+                setups = ast.literal_eval(setups)
+            except (SyntaxError, ValueError):
+                pass
+
+        if isinstance(setups, str):
+            setup_by_atom = [setups] * len(labels)
+            setup_values = [setups]
+        elif isinstance(setups, dict):
+            default = setups.get('default', setups.get(None, 'paw'))
+            setup_by_atom = [setups.get(label, default) for label in labels]
+            for atom_index, setup in setups.items():
+                if isinstance(atom_index, int) and 0 <= atom_index < len(labels):
+                    setup_by_atom[atom_index] = setup
+            setup_values = list(setups.values())
+        else:
+            return False, []
+
+        detected = any(
+            isinstance(setup, str) and ':' in setup for setup in setup_values
+        )
+        models = []
+        seen = set()
+        for label, setup in zip(labels, setup_by_atom):
+            if not isinstance(setup, str) or ':' not in setup:
+                continue
+            corrections = setup.split(':', 1)[1]
+            for correction in corrections.split(';'):
+                match = re.fullmatch(
+                    r'\s*([spdfg])\s*,\s*([-+\d.eE]+)(?:\s*,\s*[01])?\s*',
+                    correction,
+                )
+                if match is None:
+                    continue
+                orbital, value = match.groups()
+                try:
+                    u_effective = float(value)
+                except ValueError:
+                    continue
+                model = (label, orbital, u_effective)
+                if model not in seen:
+                    seen.add(model)
+                    models.append(model)
+        return detected, models
+
     def init_parser(self, filepath, logger):
         self.parser = self.gpw_parser
         self.parser.mainfile = filepath
@@ -460,6 +517,29 @@ class GPAWParser:
         sec_method.electronic = sec_electronic
         sec_electronic.relativity_method = 'pseudo_scalar_relativistic'
         sec_electronic.method = 'DFT'
+        atomic_numbers = self.parser.get_array('atomicnumbers')
+        labels = (
+            [ase.data.chemical_symbols[z] for z in atomic_numbers]
+            if atomic_numbers is not None
+            else []
+        )
+        setups = self.parser.get_parameter('setups')
+        if setups is None:
+            setups = self.parser.get_parameter('setuptypes')
+        hubbard_detected, hubbard_models = self._get_hubbard_models(setups, labels)
+        if hubbard_detected:
+            sec_electronic.method = 'DFT+U'
+        for label, orbital, u_effective in hubbard_models:
+            sec_method.atom_parameters.append(
+                AtomParameters(
+                    label=label,
+                    hubbard_kanamori_model=HubbardKanamoriModel(
+                        orbital=orbital,
+                        u_effective=u_effective * ureg.eV,
+                        double_counting_correction='Dudarev',
+                    ),
+                )
+            )
         charge = self.parser.get_parameter('charge')
         if charge is not None:
             sec_electronic.charge = int(charge)
