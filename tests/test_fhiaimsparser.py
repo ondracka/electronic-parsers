@@ -65,6 +65,9 @@ def test_scf_spinpol(parser):
     assert list(sec_method.k_mesh.grid) == [16] * 3
     assert sec_method.electronic.n_spin_channels == 2
     assert sec_method.electronic.method == 'DFT'
+    assert sec_method.electronic.charge.to('elementary_charge').magnitude == approx(
+        0.0
+    )
     assert sec_method.electronic.relativity_method == 'scalar_relativistic_atomic_ZORA'
     assert sec_method.electronic.van_der_waals_method == ''
     assert sec_method.electronic.smearing.kind == 'gaussian'
@@ -103,6 +106,34 @@ def test_scf_spinpol(parser):
     assert np.shape(sec_eig.occupations[1][3]) == (19,)
     assert sec_eig.energies[1][2][4].magnitude == approx(-1.1221523e-16)
     assert sec_eig.occupations[0][3][9] == 1.0
+
+
+@pytest.mark.parametrize(
+    'charge_line, expected_charge',
+    [('    charge             -0.5', -0.5), ('', 0.0)],
+)
+def test_electronic_charge_from_executed_control(
+    parser, tmp_path, charge_line, expected_charge
+):
+    """Normalize the charge syntax present in the charged Si Oasis outputs."""
+    source = Path('tests/data/fhiaims/Fe_scf_spinpol/out.out').read_text()
+    original = '    charge             0.'
+    assert source.count(original) == 1
+    mainfile = tmp_path / 'aims.out'
+    mainfile.write_text(source.replace(original, charge_line))
+
+    archive = EntryArchive()
+    parser.parse(str(mainfile), archive, None)
+
+    electronic = archive.run[0].method[0].electronic
+    assert electronic.charge.to('elementary_charge').magnitude == approx(
+        expected_charge
+    )
+    custom_charge = archive.run[0].method[0].x_fhi_aims_controlIn_charge
+    if charge_line:
+        assert custom_charge == approx(expected_charge)
+    else:
+        assert custom_charge is None
 
 
 def test_clean_end_uses_controlled_timing_footer(parser, tmp_path):

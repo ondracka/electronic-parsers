@@ -132,6 +132,7 @@ class FHIAimsControlParser(TextParser):
                 xsection_method.x_fhi_aims_controlIn_charge,
                 rf'{re_n} *charge\s*({re_float})',
                 repeats=False,
+                dtype=float,
             ),
             Quantity(
                 xsection_method.x_fhi_aims_controlIn_hse_unit,
@@ -2093,12 +2094,23 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
         self.control_parser.mainfile = self.filepath
         # we use species as marker that control parameters are printed in out file
         species = self.control_parser.get('species')
+        output_charge = self.control_parser.get('x_fhi_aims_controlIn_charge')
+        control_from_output = species is not None
         # if not in outfile read it from control.in
         if species is None:
             control_file = self.get_fhiaims_file('control.in')
             if not control_file:
                 control_file = [os.path.join(self.out_parser.maindir, 'control.in')]
             self.control_parser.mainfile = control_file[0]
+
+        # FHI-aims defines ``charge`` as nuclear charge minus electron count,
+        # which is also the sign convention of ``Electronic.charge``.  Use
+        # only the executed control settings echoed in the output here: a
+        # neighboring control.in can be stale or unrelated to the run.
+        if output_charge is not None:
+            sec_electronic.charge = float(output_charge) * ureg.elementary_charge
+        elif control_from_output:
+            sec_electronic.charge = 0.0 * ureg.elementary_charge
 
         def parse_basis_set(species):
             sec_basis_set = x_fhi_aims_section_controlIn_basis_set()
