@@ -62,6 +62,7 @@ def test_scf_spinpol(parser):
     assert list(sec_method.k_mesh.grid) == [16] * 3
     assert sec_method.electronic.n_spin_channels == 2
     assert sec_method.electronic.relativity_method == 'scalar_relativistic_atomic_ZORA'
+    assert sec_method.electronic.van_der_waals_method == ''
     assert sec_method.electronic.smearing.kind == 'gaussian'
     assert sec_method.electronic.smearing.width == approx(1.602176634e-20)
     assert sec_method.dft.xc_functional.correlation[0].name == 'LDA_C_PW'
@@ -266,6 +267,19 @@ def test_native_tiers(tier):
 
     sec_er = archive.run[0].method[0].electrons_representation[0]
     assert sec_er.native_tier == f'{tier}_defaults_2020'
+
+
+@pytest.mark.parametrize(
+    'directory, expected',
+    [('vdw_ts_periodic', 'TS'), ('vdw_mbd', 'MBD@rsSCS')],
+)
+def test_van_der_waals_method(parser, directory, expected):
+    archive = EntryArchive()
+    parser.parse(f'{_root_dir}/{directory}/aims.out', archive, None)
+
+    electronic = archive.run[0].method[0].electronic
+    assert electronic.van_der_waals_method == expected
+    assert electronic.m_to_dict()['van_der_waals_method'] == expected
 
 
 def test_md(parser):

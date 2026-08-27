@@ -889,6 +889,19 @@ class FHIAimsOutParser(TextParser):
                 repeats=False,
             ),
             Quantity(
+                'vdw_ts_method',
+                r'(Evaluating non\-empirical van der Waals correction '
+                r'\(Tkatchenko/Scheffler 2009\))',
+                repeats=False,
+                convert=False,
+            ),
+            Quantity(
+                'vdw_mbd_method',
+                r'Computing\s+(MBD@[\w\-]+)\s+energy',
+                repeats=False,
+                convert=False,
+            ),
+            Quantity(
                 'band_segment_points',
                 r'Plot band\s*\d+\s*\|\s*begin[ \d\.\-]+\s*\|\s*end[ \d\.\-]+\s*\|\s*number of points:\s*(\d+)',
                 repeats=True,
@@ -1800,7 +1813,6 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
                                     details={key: metainfo_name},
                                 )
                             # TODO add the remanining properties
-            sec_run.method[-1].electronic.van_der_waals_method = 'TS'
 
         def parse_section(section):
             self.parse_system(section)
@@ -2068,6 +2080,14 @@ class FHIAimsParser(BeyondDFTWorkflowsParser):
         sec_electronic = Electronic()
         sec_method.electronic = sec_electronic
         sec_electronic.method = 'DFT'
+        mbd_method = self.out_parser.get('vdw_mbd_method')
+        sec_electronic.van_der_waals_method = (
+            mbd_method
+            if mbd_method is not None
+            else 'TS'
+            if self.out_parser.get('vdw_ts_method') is not None
+            else ''
+        )
 
         # control parameters from out file
         self.control_parser.mainfile = self.filepath
