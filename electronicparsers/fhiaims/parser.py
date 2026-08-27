@@ -881,7 +881,8 @@ class FHIAimsOutParser(TextParser):
             ),
             Quantity(
                 xsection_method.x_fhi_aims_controlInOut_xc,
-                r'XC: (?:Running|Using) ([\-\w \(\) ]+)',
+                rf'{re_n} *XC: (?:Running|Using) '
+                r'(?![^\r\n]*\bwith OMEGA\b)([\-\w \(\) ]+)',
                 repeats=False,
             ),
             Quantity(
