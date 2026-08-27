@@ -527,6 +527,7 @@ def test_dftu_static(parser, dir, slice, uref, jref):
         if not os.path.isfile(filename):
             continue
         parser.parse(filename, archive, None)
+        assert archive.run[-1].method[-1].electronic.method == 'DFT+U'
         param = archive.run[-1].method[-1].atom_parameters[slice]
         if hubb := param.hubbard_kanamori_model:
             assert hubb.double_counting_correction == 'Dudarev'

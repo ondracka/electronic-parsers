@@ -1948,6 +1948,8 @@ class VASPParser:
             ):
                 hubbard_present = True
                 break
+        if hubbard_present:
+            sec_method.electronic.method = 'DFT+U'
 
         # Atom Parameters
         atomtypes = self.parser.atom_info.get('atomtypes', {})
