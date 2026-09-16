@@ -60,6 +60,7 @@ def test_scf_spinpol(parser):
     assert len(sec_methods) == 1
     assert sec_methods[0].dft.xc_functional.hybrid[0].name == 'HYB_GGA_XC_B3LYP'
     assert sec_methods[0].electronic.charge.magnitude == -1
+    assert sec_methods[0].electronic.n_spin_channels == 1
     assert sec_methods[0].electronic.van_der_waals_method == ''
     assert sec_methods[0].electronic.m_to_dict()['van_der_waals_method'] == ''
 
@@ -154,6 +155,8 @@ def test_scf_multirun(parser):
     assert len(sec_runs[1].system) == 1
     assert len(sec_runs[0].method) == 1
     assert len(sec_runs[1].method) == 1
+    assert sec_runs[0].method[0].electronic.n_spin_channels == 2
+    assert sec_runs[1].method[0].electronic.n_spin_channels == 2
 
     sec_scc = sec_runs[0].calculation[4]
     assert sec_scc.forces.total.value_raw[0][2].magnitude == approx(-9.69697756e-14)

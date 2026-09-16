@@ -1542,6 +1542,9 @@ class GaussianParser:
             val = self.out_parser.get('run')[n_run].get(key)
             if val is not None:
                 setattr(sec_electronic, key, val)
+        spin_target = sec_electronic.spin_target
+        if spin_target is not None and spin_target >= 1:
+            sec_electronic.n_spin_channels = 1 if spin_target == 1 else 2
 
     def init_parser(self, filepath, logger):
         self.out_parser.mainfile = filepath
