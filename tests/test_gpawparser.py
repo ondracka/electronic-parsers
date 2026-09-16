@@ -44,6 +44,7 @@ def test_gpw(parser):
     assert archive.run[0].program.version == '1.1.0'
 
     sec_method = archive.run[0].method[0]
+    assert sec_method.electronic.n_spin_channels == 1
     assert sec_method.electronic.method == 'DFT'
     sec_basis = sec_method.electrons_representation[0].basis_set[0]
     assert sec_basis.type == 'real-space grid'
@@ -121,6 +122,7 @@ def test_gpw_oasis_forces(parser):
     method = archive.run[0].method[0]
     assert method.scf.threshold_energy_change.to('eV').magnitude == approx(1e-7)
     electronic = method.electronic
+    assert electronic.n_spin_channels == 1
     assert electronic.van_der_waals_method == ''
     assert electronic.m_to_dict()['van_der_waals_method'] == ''
 
@@ -205,6 +207,7 @@ def test_spinpol(parser):
     archive = EntryArchive()
     parser.parse('tests/data/gpaw/Hspinpol.gpw', archive, None)
 
+    assert archive.run[0].method[0].electronic.n_spin_channels == 2
     sec_eig = archive.run[0].calculation[0].eigenvalues[0]
     assert np.shape(sec_eig.kpoints) == (1, 3)
     assert np.shape(sec_eig.occupations[1][0]) == (1,)

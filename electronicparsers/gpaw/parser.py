@@ -522,7 +522,12 @@ class GPAWParser:
         return mode
 
     def get_nspin(self):
-        # TODO another way determine spin?
+        n_spin_channels = self.parser.get_array_dimension('nspins')
+        if n_spin_channels is not None:
+            return int(n_spin_channels)
+        spin_polarized = self.parser.get_parameter('spinpol')
+        if isinstance(spin_polarized, bool):
+            return 2 if spin_polarized else 1
         magnetic_moments = self.parser.get_array('magneticmoments')
         return 1 if magnetic_moments is None else 2
 
@@ -586,6 +591,7 @@ class GPAWParser:
 
         sec_electronic = Electronic()
         sec_method.electronic = sec_electronic
+        sec_electronic.n_spin_channels = self.get_nspin()
         sec_electronic.relativity_method = 'pseudo_scalar_relativistic'
         sec_electronic.method = 'DFT'
         atomic_numbers = self.parser.get_array('atomicnumbers')
