@@ -58,6 +58,7 @@ from runschema.method import (
     XCFunctional,
     Functional,
     Electronic,
+    Smearing,
     Scf,
     KMesh,
     GW,
@@ -256,6 +257,41 @@ def _get_vdw_method(incar):
         methods.append('XC')
 
     return '+'.join(methods)
+
+
+def _get_smearing(incar):
+    """Return the normalized executed VASP occupation-smearing settings."""
+    ismear = incar.get('ISMEAR')
+    try:
+        ismear = int(ismear)
+    except (TypeError, ValueError):
+        return None
+
+    if ismear > 0:
+        kind = 'methfessel-paxton'
+    else:
+        kind = {
+            -15: 'tetrahedra',
+            -14: 'tetrahedra',
+            -5: 'tetrahedra',
+            -4: 'tetrahedra',
+            -2: 'empty',
+            -1: 'fermi',
+            0: 'gaussian',
+        }.get(ismear)
+    if kind is None:
+        # ISMEAR=-3 loops over SMEARINGS and has no single normalized value.
+        return None
+
+    smearing = Smearing(kind=kind)
+    sigma = incar.get('SIGMA')
+    # SIGMA is ignored by the unsmeared tetrahedron methods.
+    if sigma is not None and ismear not in (-5, -4, -2):
+        try:
+            smearing.width = (float(sigma) * ureg.eV).to('joule').magnitude
+        except (TypeError, ValueError):
+            pass
+    return smearing
 
 
 def _xc_setting_tokens(value):
@@ -2013,9 +2049,11 @@ class VASPParser:
 
         # input/output incar
         self.parse_incarsinout()
+        executed_incar = self.parser.get_incar_out()
         sec_method.electronic.van_der_waals_method = _get_vdw_method(
             self.parser.incar
         )
+        sec_method.electronic.smearing = _get_smearing(executed_incar)
         # kpoints
         self.parse_kpoints(sec_method)
 

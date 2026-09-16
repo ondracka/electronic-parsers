@@ -26,6 +26,7 @@ from electronicparsers.vasp import VASPParser
 from electronicparsers.vasp.parser import (
     ContentParser,
     OutcarContentParser,
+    _get_smearing,
     _get_vdw_method,
     _infer_uniform_k_mesh,
     _pseudopotential_xc_key,
@@ -82,6 +83,8 @@ def test_vasprunxml_static(parser):
     assert len(sec_method.x_vasp_incar_out) == 112
     assert sec_method.x_vasp_incar_in['LCHARG']
     assert sec_method.electronic.n_spin_channels == 1
+    assert sec_method.electronic.smearing.kind == 'tetrahedra'
+    assert sec_method.electronic.smearing.width is None
     # The legacy ``US Mg`` title carries no LEXCH/family evidence.  An unset
     # GGA must remain unknown rather than being silently labelled PBE.
     assert len(sec_method.dft.xc_functional.exchange) == 0
@@ -380,6 +383,10 @@ def test_outcar_oasis_uniform_mesh(parser):
     assert k_mesh.sampling_method == 'Gamma-centered'
     electronic = archive.run[0].method[0].electronic
     assert electronic.van_der_waals_method == ''
+    assert electronic.smearing.kind == 'gaussian'
+    assert electronic.smearing.width == approx(
+        (0.2 * ureg.eV).to('joule').magnitude
+    )
     assert electronic.n_electrons == approx(8.0)
     assert electronic.charge.to('elementary_charge').magnitude == approx(0.0)
 
@@ -424,6 +431,36 @@ def test_outcar_oasis_vdw_d3bj(parser):
 )
 def test_get_vdw_method(incar, expected):
     assert _get_vdw_method(incar) == expected
+
+
+@pytest.mark.parametrize(
+    'ismear, expected_kind, has_width',
+    [
+        (-15, 'tetrahedra', True),
+        (-14, 'tetrahedra', True),
+        (-5, 'tetrahedra', False),
+        (-4, 'tetrahedra', False),
+        (-2, 'empty', False),
+        (-1, 'fermi', True),
+        (0, 'gaussian', True),
+        (1, 'methfessel-paxton', True),
+        (2, 'methfessel-paxton', True),
+    ],
+)
+def test_get_smearing(ismear, expected_kind, has_width):
+    smearing = _get_smearing({'ISMEAR': ismear, 'SIGMA': 0.2})
+
+    assert smearing.kind == expected_kind
+    expected_width = (0.2 * ureg.eV).to('joule').magnitude
+    if has_width:
+        assert smearing.width == approx(expected_width)
+    else:
+        assert smearing.width is None
+
+
+@pytest.mark.parametrize('incar', [{}, {'ISMEAR': -3}, {'ISMEAR': 'invalid'}])
+def test_get_smearing_unsupported(incar):
+    assert _get_smearing(incar) is None
 
 
 def test_infer_even_monkhorst_pack_mesh():
