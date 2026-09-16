@@ -2144,6 +2144,9 @@ class CP2KParser:
         dft_settings = self.settings.get('dft', {})
         if dft_settings:
             sec_dft.x_cp2k_quickstep_settings = dft_settings
+            n_spin_channels = dft_settings.get('number_of_spin_channels')
+            if n_spin_channels is not None and sec_method.electronic is not None:
+                sec_method.electronic.n_spin_channels = int(n_spin_channels)
             si_correction = dft_settings.get('self_interaction_correction_method')
             if si_correction:
                 val = self._self_interaction_map.get(si_correction)

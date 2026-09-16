@@ -94,6 +94,7 @@ def test_single_point(parser):
     )
 
     sec_method = sec_run.method[0]
+    assert sec_method.electronic.n_spin_channels == 1
     sec_basis_sets = sec_method.electrons_representation[0].basis_set
     assert sec_basis_sets[0].atom_centered[0].name == 'DZVP-GTH-PADE'
     assert sec_basis_sets[1].cutoff.magnitude == approx(6.53961708e-16)
@@ -200,6 +201,7 @@ def test_pdos(parser):
     assert sec_run.method[-1].dft.xc_functional.exchange[1].name == 'GGA_X_PBE'
     assert sec_run.method[-1].dft.xc_functional.correlation[0].name == 'MGGA_C_TPSS'
     assert sec_run.method[-1].dft.xc_functional.correlation[1].name == 'GGA_C_PBE'
+    assert sec_run.method[-1].electronic.n_spin_channels == 2
     assert sec_run.method[-1].electronic.van_der_waals_method == 'XC'
     assert sec_run.method[-1].electronic.m_to_dict()['van_der_waals_method'] == 'XC'
 
